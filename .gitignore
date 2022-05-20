@@ -1,3 +1,10 @@
+results.tar.gz
+results/
+VOC2012test/
+logs/
+data/
+model/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
