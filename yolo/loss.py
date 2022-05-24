@@ -93,6 +93,9 @@ class YoloLoss(nn.Module):
 		S = G.get('S')
 		B = G.get('B')
 		num_classes = G.get('num_classes')
+		SR = y.shape[1]
+		scale_idx = G.get('scale').index(SR / S)
+		S = SR
 
 		yhat = yhat.reshape(-1, S, S, B, 5 + num_classes)
 		y = y.reshape(-1, S, S, B, 5 + num_classes)
@@ -170,8 +173,8 @@ class YoloLoss(nn.Module):
 
 		# width and height (reversed tw and th)
 		anchors = G.get('anchors').to(yhat.device)
-		wh_hat = torch.log((yhat[:, :, :, :, 2:4] / anchors) + 1e-16)
-		wh_true = torch.log((y[:, :, :, :, 2:4] / anchors) + 1e-16)
+		wh_hat = torch.log((yhat[:, :, :, :, 2:4] / anchors[scale_idx]) + 1e-16)
+		wh_true = torch.log((y[:, :, :, :, 2:4] / anchors[scale_idx]) + 1e-16)
 
 		if self.scale_coord:
 			# coordinate width/height coefficient: (2 - truth.w * truth.h)
