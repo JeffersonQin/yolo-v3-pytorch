@@ -14,11 +14,23 @@ class YoloAnchorLayer(nn.Module):
 		self.anchors = G.get('anchors')
 
 
-	def forward(self, X: torch.Tensor, scale_idx: int) -> torch.Tensor:
+	def forward(self, X: torch.Tensor) -> torch.Tensor:
+		"""YOLO Anchor Layer
+		* Apply anchors to the output
+		* Apply sigmoid to the objectness score
+		* Apply sigmoid to the class score
+
+		Args:
+			X (torch.Tensor): (#, B*(5+num_classes) [num_filter], S, S)
+
+		Returns:
+			torch.Tensor: (#, S, S, B*(5+num_classes) [num_filter])
+		"""
 		self.anchors = self.anchors.to(X.device)
-		shape = X.shape
-		S = G.get('S') * G.get('scale')[scale_idx]
+		S = G.get('S')
 		B = G.get('B')
+		SR = X.shape[2]
+		scale_idx = G.get('scale').index(SR / S)
 		num_classes = G.get('num_classes')
 
 		# reshape from conv2d shape to (batch_size, S, S, filter)
@@ -26,7 +38,7 @@ class YoloAnchorLayer(nn.Module):
 		shape = X.shape
 
 		# reshape to (batch_size, S, S, B, 5 + num_classes) for further processing
-		X = X.reshape(-1, S, S, B, 5 + num_classes)
+		X = X.reshape(-1, SR, SR, B, 5 + num_classes)
 
 		XC = torch.clone(X)
 
