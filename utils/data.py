@@ -260,6 +260,7 @@ def load_data_voc(batch_size: int, num_workers=0, persistent_workers=False, down
 		train_shuffle (bool, optional): whether to shuffle train data. Defaults to True.
 		test_shuffule (bool, optional): whether to shuffle test data. Defaults to False.
 		pin_memory (bool, optional): whether to pin memory. Defaults to True.
+		data_augmentaion (bool, optional): whether to augment train data. Default to True.
 
 	Returns:
 		list[data.DataLoader]: train_iter, test_iter
@@ -285,7 +286,7 @@ def load_data_voc(batch_size: int, num_workers=0, persistent_workers=False, down
 
 
 def load_data_coco(batch_size: int, num_workers=0, persistent_workers=False, train_shuffle=True, test_shuffule=False, pin_memory=True, data_augmentation=True) -> list[data.DataLoader]:
-	"""Load MSCOCO Detection dataset, consist of VOC2017train(trainval35k) and VOC2017val
+	"""Load MSCOCO Detection dataset, consist of COCO2017train(trainval35k) and COCO2017val
 
 	Args:
 		batch_size (int): batch size
@@ -295,6 +296,7 @@ def load_data_coco(batch_size: int, num_workers=0, persistent_workers=False, tra
 		train_shuffle (bool, optional): whether to shuffle train data. Defaults to True.
 		test_shuffule (bool, optional): whether to shuffle test data. Defaults to False.
 		pin_memory (bool, optional): whether to pin memory. Defaults to True.
+		data_augmentaion (bool, optional): whether to augment train data. Default to True.
 
 	Returns:
 		list[data.DataLoader]: train_iter, test_iter
