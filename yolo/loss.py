@@ -2,19 +2,19 @@ import torch
 import torch.nn as nn
 
 from utils import globalvar as G
-from yolo.converter import Yolo2BBox
+from yolo.converter import Yolo2BBoxSingle
 
 
 class YoloLoss(nn.Module):
 	"""Yolo loss."""
 	def __init__(self, 
-		lambda_coord: float, 
-		lambda_noobj: float, 
-		lambda_obj: float, 
-		lambda_class: float, 
-		lambda_prior: float, 
-		IoU_thres: float, 
-		epoch_prior: int, 
+		lambda_coord: float=1.0, 
+		lambda_noobj: float=1.0, 
+		lambda_obj: float=1.0, 
+		lambda_class: float=1.0, 
+		lambda_prior: float=0.0, 
+		IoU_thres: float=0.7, 
+		epoch_prior: int=0, 
 		scale_coord: bool = True):
 		"""Yolo loss.
 
@@ -106,7 +106,7 @@ class YoloLoss(nn.Module):
 			"""used to save memory."""
 			with torch.no_grad():
 				# convert data into bbox format for IoU calculation
-				converter = Yolo2BBox()
+				converter = Yolo2BBoxSingle()
 
 				M = yhat.shape[0]
 
@@ -176,11 +176,6 @@ class YoloLoss(nn.Module):
 		wh_hat = torch.log((yhat[:, :, :, :, 2:4] / anchors[scale_idx]) + 1e-16)
 		wh_true = torch.log((y[:, :, :, :, 2:4] / anchors[scale_idx]) + 1e-16)
 
-		if self.scale_coord:
-			# coordinate width/height coefficient: (2 - truth.w * truth.h)
-			wh_coef = 2 - y[:, :, :, :, 2] * y[:, :, :, :, 3]
-		else: wh_coef = 1
-
 		# pick responsible data
 		# ground truth (y) remain the same
 		# detection (yhat) will be reorganized
@@ -206,8 +201,10 @@ class YoloLoss(nn.Module):
 		xy_hat = yhat_res[:, :, :, :, 0:2]
 		xy_y = y[:, :, :, :, 0:2]
 		# calculate loss
-		coord_loss = (((xy_hat - xy_y) * wh_coef) ** 2 + ((wh_hat_res - wh_true) * wh_coef) ** 2).sum(dim=4) \
-			* have_obj * self.lambda_coord * (2 - y[:, :, :, :, 2] * y[:, :, :, :, 3])
+		coord_loss = ((xy_hat - xy_y) ** 2 + (wh_hat_res - wh_true) ** 2).sum(dim=4) \
+			* have_obj * self.lambda_coord
+		if self.scale_coord:
+			coord_loss = coord_loss * (2 - y[:, :, :, :, 2] * y[:, :, :, :, 3])
 		coord_loss = coord_loss.sum(dim=(1, 2, 3))
 		# 2. class loss
 		class_loss = ((yhat_res[:, :, :, :, 5:] - y[:, :, :, :, 5:]) ** 2).sum(dim=(4)) \
