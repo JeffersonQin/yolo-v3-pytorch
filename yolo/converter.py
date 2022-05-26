@@ -53,9 +53,11 @@ class YoloAnchorLayer(nn.Module):
 
 
 class Yolo2BBoxSingle(nn.Module):
-	"""convert yolo result from (S, S, (5+num_classes)*B) or (#, S, S, (5+num_classes)*B) to normal bounding box result with size (S*S*B, (5+num_classes)) or (#, S*S*B, (5+num_classes))"""
+	"""convert yolo result from (S, S, (5+?)*B) or (#, S, S, (5+?)*B) to normal bounding box result with size (S*S*B, (5+?)) or (#, S*S*B, (5+?))"""
 	def __init__(self):
-		"""convert yolo result from (S, S, (5+num_classes)*B) or (#, S, S, (5+num_classes)*B) to normal bounding box result with size (S*S*B, (5+num_classes)) or (#, S*S*B, (5+num_classes))"""
+		"""convert yolo result from (S, S, (5+?)*B) or (#, S, S, (5+?)*B) to normal bounding box result with size (S*S*B, (5+?)) or (#, S*S*B, (5+?))
+		
+		Note that '5+?' means that the last dimension can be any length greater than or equal to 5, as this trick can be applied to save memory."""
 		super(Yolo2BBoxSingle, self).__init__()
 
 
@@ -63,16 +65,15 @@ class Yolo2BBoxSingle(nn.Module):
 		"""forward
 
 		Args:
-			X (torch.Tensor): yolo result (S, S, (5+num_classes)*B) or (#, S, S, (5+num_classes)*B)
+			X (torch.Tensor): yolo result (S, S, (5+?)*B) or (#, S, S, (5+?)*B)
 
 		Returns:
-			torch.Tensor: bounding box result (S*S*B, (5+num_classes)) or (#, S*S*B, (5+num_classes)) ((5+num_classes): x1, y1, x2, y2, objectness, class_prob)
+			torch.Tensor: bounding box result (S*S*B, (5+?)) or (#, S*S*B, (5+?)) ((5+?): x1, y1, x2, y2, objectness, class_prob)
 		"""
 		with torch.no_grad():
 			device = X.device
 			S = X.shape[1]
 			B = G.get('B')
-			num_classes = G.get('num_classes')
 
 			# arrange cell xidx, yidx
 			# [S, S]
@@ -92,7 +93,8 @@ class Yolo2BBoxSingle(nn.Module):
 				X.unsqueeze_(0)
 				single = True
 
-			X = X.reshape(-1, S, S, B, 5 + num_classes)
+			N = X.shape[0]
+			X = X.reshape(N, S, S, B, -1)
 			x = (X[..., 0] + cell_xidx) / S
 			y = (X[..., 1] + cell_yidx) / S
 
@@ -108,7 +110,7 @@ class Yolo2BBoxSingle(nn.Module):
 			XC[..., 2] = x2
 			XC[..., 3] = y2
 
-			XC = XC.reshape(-1, S * S * B, 5 + num_classes)
+			XC = XC.reshape(N, S * S * B, -1)
 
 			if single:
 				XC = XC[0]
