@@ -45,6 +45,7 @@ class YoloLoss(nn.Module):
 			scale_coord (bool, optional): whether to scale coordinates (time (2 - w * h)). Defaults to True.
 		"""
 		super(YoloLoss, self).__init__()
+		self.converter = Yolo2BBoxSingle()
 		self.lambda_coord = lambda_coord
 		self.lambda_noobj = lambda_noobj
 		self.lambda_obj = lambda_obj
@@ -92,104 +93,79 @@ class YoloLoss(nn.Module):
 		"""
 		S = G.get('S')
 		B = G.get('B')
-		num_classes = G.get('num_classes')
+		N = yhat.shape[0]
 		SR = y.shape[1]
+		num_classes = G.get('num_classes')
 		scale_idx = G.get('scale').index(SR / S)
 		S = SR
 
-		yhat = yhat.reshape(-1, S, S, B, 5 + num_classes)
-		y = y.reshape(-1, S, S, B, 5 + num_classes)
+		# [N, S, S, B*(5+num_classes)] => [N, S, S, B, 5+num_classes]
+		yhat = yhat.reshape(N, S, S, B, 5 + num_classes)
+		y = y.reshape(N, S, S, B, 5 + num_classes)
 
-		N = yhat.shape[0]
+		with torch.no_grad():
+			# convert data into bbox format for IoU calculation
+			# half() is also used to save memory
+			#    [N, S, S, B, 5+num_classes]
+			# => [N, S, S, B, 5]
+			# => [N, S*S*B, 5]
+			# => [N, S, S, B, 5]
+			# YHAT:
+			# => [N, S, S, B, 1, 5]
+			# => [N, S, S, B (YHat), B (Y), 5]
+			# Y:
+			# => [N, S, S, 1, B, 5]
+			# => [N, S, S, B (YHat), B (Y), 5]
+			yhat_bbox = self.converter(yhat[..., 0:5].half()) \
+							.reshape(N, S, S, B, 5) \
+							.unsqueeze(4) \
+							.expand(N, S, S, B, B, 5)
+			y_bbox = self.converter(y[..., 0:5].half()) \
+							.reshape(N, S, S, B, 5) \
+							.unsqueeze(3) \
+							.expand(N, S, S, B, B, 5)
 
-		def internal_function(yhat, y):
-			"""used to save memory."""
-			with torch.no_grad():
-				# convert data into bbox format for IoU calculation
-				converter = Yolo2BBoxSingle()
+			# calculate IoU
+			def __intersection__():
+				"""internal method to calculate intersection. used to save memory"""
+				# [N, S, S, B (YHat), B (Y)]
+				wi = torch.min(yhat_bbox[..., 2], y_bbox[..., 2]) - torch.max(yhat_bbox[..., 0], y_bbox[..., 0])
+				wi = torch.max(wi, torch.zeros_like(wi))
+				hi = torch.min(yhat_bbox[..., 3], y_bbox[..., 3]) - torch.max(yhat_bbox[..., 1], y_bbox[..., 1])
+				hi = torch.max(hi, torch.zeros_like(hi))
+				return wi * hi
 
-				M = yhat.shape[0]
-
-				# half() is also used to save memory
-				# [#, S*S*B, 5+num_classes] => [#, S*S*B, 1, 5] => [#, S*S*B, S*S*B, 5]
-				yhat_bbox = converter(yhat).half()[..., 0:5].unsqueeze(2).expand(M, S * S * B, S * S * B, 5)
-				# [#, S*S*B, 5+num_classes] => [#, 1, S*S*B, 5] => [#, S*S*B, S*S*B, 5]
-				y_bbox = converter(y).half()[..., 0:5].unsqueeze(1).expand(M, S * S * B, S * S * B, 5)
-
-				def internal_get_intersection():
-					"""used to save memory."""
-					# calculate IoU
-					# [#, S*S*B, S*S*B]
-					wi = torch.min(yhat_bbox[..., 2], y_bbox[..., 2]) - torch.max(yhat_bbox[..., 0], y_bbox[..., 0])
-					wi = torch.max(wi, torch.zeros_like(wi))
-					hi = torch.min(yhat_bbox[..., 3], y_bbox[..., 3]) - torch.max(yhat_bbox[..., 1], y_bbox[..., 1])
-					hi = torch.max(hi, torch.zeros_like(hi))
-
-					# [#, S*S*B (YHat), S*S*B (Y)]
-					return wi * hi
-
-				intersection = internal_get_intersection()
-				union = (yhat_bbox[..., 2] - yhat_bbox[..., 0]) * (yhat_bbox[..., 3] - yhat_bbox[..., 1]) + \
+			# [N, S, S, B (YHat), B (Y)]
+			intersection = __intersection__()
+			union = (yhat_bbox[..., 2] - yhat_bbox[..., 0]) * (yhat_bbox[..., 3] - yhat_bbox[..., 1]) + \
 					(y_bbox[..., 2] - y_bbox[..., 0]) * (y_bbox[..., 3] - y_bbox[..., 1]) - intersection
-				IoU = intersection / (union + 1e-12)
+			IoU = intersection / (union + 1e-12)
 
-				# [#, S*S*B] => [#, S, S, B]
-				MaxIoU = IoU.max(dim=2, keepdim=False)[0].reshape(-1, S, S, B)
-				# filter out MaxIoU < IoU_thres
-				no_obj_iou = MaxIoU < self.IoU_thres
+			# [N, S, S, B (YHat), B (Y)] => [N, S, S, B (YHat)]
+			MaxIoU = IoU.max(dim=4, keepdim=False)[0]
+			# filter out MaxIoU < IoU_thres
+			# [N, S, S, B] (boolean index array)
+			no_obj_iou = MaxIoU < self.IoU_thres
 
-				# [#, S*S*B (YHat), S*S*B (Y)] => [#, S*S*B (YHat), S*S*B (Y)]
-				IoU = torch.permute(IoU, [0, 2, 1])
-
-				_, idx = IoU.max(dim=2, keepdim=True)
-
-				return no_obj_iou, idx
-
-		def obtain_by_crop(crop) -> list[torch.Tensor]:
-			"""Obtain no_obj_iou by cropping down batch, used to enable large batch training
-
-			Args:
-				crop (int): crop count
-
-			Returns:
-				list[torch.Tensor]: no_obj_iou and idx
-			"""
-			no_obj_iou = torch.tensor([], dtype=torch.bool).to(yhat.device)
-			idx = torch.tensor([], dtype=torch.int64).to(yhat.device)
-			for i in range(crop):
-				no_obj_iou_i, idx_i = internal_function(yhat[int(i * N / crop):int((i + 1) * N / crop)], 
-														y[int(i * N / crop):int((i + 1) * N / crop)])
-				no_obj_iou = torch.cat([no_obj_iou, no_obj_iou_i], dim=0)
-				idx = torch.cat([idx, idx_i], dim=0)
-			
-			return no_obj_iou, idx
-
-		if S == 19:
-			crop = 3
-		else:
-			crop = 1
-		
-		no_obj_iou, idx = obtain_by_crop(crop)
+			# [N, S, S, B (YHat), B (Y)] => [N, S, S, B (Y), B (YHat)]
+			IoU = torch.permute(IoU, [0, 1, 2, 4, 3])
+			# [N, S, S, B (Y), 1]
+			_, idx = IoU.max(dim=4, keepdim=True)
 
 		# width and height (reversed tw and th)
+		# [N, S, S, B, 2]
 		anchors = G.get('anchors').to(yhat.device)
-		wh_hat = torch.log((yhat[:, :, :, :, 2:4] / anchors[scale_idx]) + 1e-16)
-		wh_true = torch.log((y[:, :, :, :, 2:4] / anchors[scale_idx]) + 1e-16)
+		wh_hat = torch.log((yhat[:, :, :, :, 2:4] / anchors[scale_idx]) + 1e-12)
+		wh_true = torch.log((y[:, :, :, :, 2:4] / anchors[scale_idx]) + 1e-12)
 
 		# pick responsible data
 		# ground truth (y) remain the same
 		# detection (yhat) will be reorganized
 		# some notes about gather:
-		# for dim=1 and index:
-		# output[i][j][k] = input[i][index[i][j][k]][k]
-		yhat_res = yhat \
-			.reshape(-1, S * S * B, 5 + num_classes) \
-			.gather(dim=1, index=idx.expand(N, S * S * B, 5 + num_classes)) \
-			.reshape(-1, S, S, B, 5 + num_classes)
-		wh_hat_res = wh_hat \
-			.reshape(-1, S * S * B, 2) \
-			.gather(dim=1, index=idx.expand(N, S * S * B, 2)) \
-			.reshape(-1, S, S, B, 2)
+		# for dim=3 and index
+		# output[N][S][S][B][i] = input[N][S][S][index[N][S][S][B][i]][i]
+		yhat_res = yhat.gather(dim=3, index=idx.expand(N, S, S, B, 5 + num_classes))
+		wh_hat_res = wh_hat.gather(dim=3, index=idx.expand(N, S, S, B, 2))
 
 		with torch.no_grad():
 			# [#, S, S, B]
