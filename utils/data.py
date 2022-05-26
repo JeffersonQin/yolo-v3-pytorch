@@ -249,11 +249,12 @@ class COCODataset(YOLODataset):
 		return img, bbox
 
 
-def load_data_voc(batch_size: int, num_workers=0, persistent_workers=False, download=False, train_shuffle=True, test_shuffule=False, pin_memory=True, data_augmentation=True) -> list[data.DataLoader]:
+def load_data_voc(batch_size_train: int, batch_size_test: int, num_workers=0, persistent_workers=False, download=False, train_shuffle=True, test_shuffule=False, pin_memory=True, data_augmentation=True) -> list[data.DataLoader]:
 	"""Load Pascal VOC dataset, consist of VOC2007trainval+test+VOC2012train, VOC2012val
 
 	Args:
-		batch_size (int): batch size
+		batch_size_train (int): training batch size
+		batch_size_test (int): testing batch_size
 		num_workers (int, optional): number of workers. Defaults to 0.
 		persistent_workers (bool, optional): persistent_workers. Defaults to False.
 		download (bool, optional): whether to download. Defaults to False.
@@ -276,20 +277,21 @@ def load_data_voc(batch_size: int, num_workers=0, persistent_workers=False, down
 	return (
 		data.DataLoader(
 			VOCDataset(data.ConcatDataset([voc2007_trainval, voc2007_test, voc2012_train]), train=data_augmentation), 
-			batch_size=batch_size, shuffle=train_shuffle, num_workers=num_workers, 
+			batch_size=batch_size_train, shuffle=train_shuffle, num_workers=num_workers, 
 			persistent_workers=persistent_workers, pin_memory=pin_memory),
 		data.DataLoader(
 			VOCDataset(voc2012_val, train=False),
-			batch_size=batch_size, shuffle=test_shuffule, num_workers=num_workers, 
+			batch_size=batch_size_test, shuffle=test_shuffule, num_workers=num_workers, 
 			persistent_workers=persistent_workers, pin_memory=pin_memory)
 	)
 
 
-def load_data_coco(batch_size: int, num_workers=0, persistent_workers=False, train_shuffle=True, test_shuffule=False, pin_memory=True, data_augmentation=True) -> list[data.DataLoader]:
+def load_data_coco(batch_size_train: int, batch_size_test: int, num_workers=0, persistent_workers=False, train_shuffle=True, test_shuffule=False, pin_memory=True, data_augmentation=True) -> list[data.DataLoader]:
 	"""Load MSCOCO Detection dataset, consist of COCO2017train(trainval35k) and COCO2017val
 
 	Args:
-		batch_size (int): batch size
+		batch_size_train (int): training batch size
+		batch_size_test (int): testing batch_size
 		num_workers (int, optional): number of workers. Defaults to 0.
 		persistent_workers (bool, optional): persistent_workers. Defaults to False.
 		download (bool, optional): whether to download. Defaults to False.
@@ -315,9 +317,9 @@ def load_data_coco(batch_size: int, num_workers=0, persistent_workers=False, tra
 
 	return (
 		data.DataLoader(COCODataset(coco2017_train, train=data_augmentation),
-			batch_size=batch_size, shuffle=train_shuffle, num_workers=num_workers, 
+			batch_size=batch_size_train, shuffle=train_shuffle, num_workers=num_workers, 
 			persistent_workers=persistent_workers, pin_memory=pin_memory),
 		data.DataLoader(COCODataset(coco2017_val, train=False), 
-			batch_size=batch_size, shuffle=test_shuffule, num_workers=num_workers, 
+			batch_size=batch_size_test, shuffle=test_shuffule, num_workers=num_workers, 
 			persistent_workers=persistent_workers, pin_memory=pin_memory)
 	)
