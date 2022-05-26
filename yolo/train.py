@@ -12,7 +12,7 @@ from utils import G
 from yolo.loss import YoloLoss
 
 
-def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lr, optimizer: torch.optim.Optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10):
+def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lr, optimizer: torch.optim.Optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_scaler: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10):
 	"""trainer for yolo v2. 
 	Note: weight init is not done in this method, because the architecture
 	of yolo v2 is rather complicated with the design of pass through layer
@@ -30,9 +30,13 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 		loss (YoloLoss): loss function
 		num_gpu (int, optional): number of gpu to train on, used for parallel training. Defaults to 1.
 		accum_batch_num (int, optional): number of batch to accumulate gradient, used to solve OOM problem when using big batch sizes. Defaults to 1.
+		mix_precision (bool, optional): whether to use mix_precision. Defaults to True.
+		grad_clip (bool, optional): whether to use gradient clipping. Defaults to True.
+		clip_max_norm (float, optional): max_norm when gradient clipping is used. Defaults to 5.0.
 		save_dir (str, optional): saving directory for model weights. Defaults to './model'.
 		load_model (Optional[str], optional): path of model weights to load if exist. Defaults to None.
 		load_optim (Optional[str], optional): path of optimizer state_dict to load if exist. Defaults to None.
+		load_scaler (Optional[str], optional): path of scaler state_dict to load if exist. Defaults to None.
 		load_epoch (int, optional): done epoch count minus one when loading, should be the same with the number in auto-saved file name. Defaults to -1.
 		visualize_cnt (int, optional): number of batches to visualize each epoch during training progress. Defaults to 10.
 	"""
@@ -60,6 +64,11 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 
 	if load_optim:
 		optimizer.load_state_dict(torch.load(load_optim))
+
+	if mix_precision:
+		scaler = torch.cuda.amp.GradScaler()
+	if load_scaler:
+		scaler.load_state_dict(torch.load(load_scaler))
 
 	num_batches = len(train_iter)
 	num_scales = len(G.get('scale'))
@@ -135,7 +144,7 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 		timer.start()
 		for i, (X, y) in enumerate(train_iter):
 			X, y = X.to(devices[0]), [ys.to(devices[0]) for ys in y]
-			with torch.autocast(devices[0]):
+			with torch.autocast(devices[0].type, enabled=mix_precision):
 				yhat = net(X)
 				plot_indices = plot(i + 1, num_batches, visualize_cnt)
 				total_loss = 0
@@ -144,7 +153,9 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 					coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = loss(yhat_single, y_single, epoch)
 					loss_val = coord_loss + class_loss + no_obj_loss + obj_loss + prior_loss
 
-					total_loss = total_loss + loss_val.sum()
+					# if NaN, do not affect training loop
+					if not torch.isnan(loss_val.sum()):
+						total_loss = total_loss + loss_val.sum()
 
 					with torch.no_grad():
 						metrics[j].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
@@ -162,7 +173,10 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 					log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, num_scales, train=True)
 
 			# backward to accumulate gradients
-			total_loss.sum().backward()
+			if mix_precision:
+				scaler.scale(total_loss.sum()).backward()
+			else: 
+				total_loss.sum().backward()
 
 			# update batch accumulator
 			accum += 1
@@ -175,7 +189,16 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 				else:
 					update_lr(optimizer, lr / accum_cnt)
 				# step
-				optimizer.step()
+				if mix_precision:
+					if grad_clip:
+						scaler.unscale_(optimizer)
+						torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=clip_max_norm)
+					scaler.step(optimizer)
+					scaler.update()
+				else:
+					if grad_clip:
+						torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=clip_max_norm)
+					optimizer.step()
 				# clear
 				optimizer.zero_grad()
 				accum_cnt = 0
@@ -201,6 +224,8 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 		torch.save(net.state_dict(), os.path.join(save_dir, f'./{log_id}-model-{epoch}.pth'))
 		# save optim
 		torch.save(optimizer.state_dict(), os.path.join(save_dir, f'./{log_id}-optim-{epoch}.pth'))
+		# save scaler
+		torch.save(scaler.state_dict(), os.path.join(save_dir, f'./{log_id}-scaler-{epoch}.pth'))
 
 		# test!
 		G.set('S', output_scale_S)
@@ -226,7 +251,7 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 					print(f'epoch {epoch} batch {i + 1}/{len(test_iter)} scale {G.get("scale")[j]} test loss: {metrics[5] / metrics[6]}, S: {G.get("S")}, B: {G.get("B")}')
 
 			for j in range(num_scales + 1):
-				log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, j, train=False)
+				log_loss_tensorboard(metrics, epoch + 1, visualize_cnt, j, train=False)
 
 			# log test mAP & PR Curve
 			mAP = 0
