@@ -229,9 +229,8 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 
 		# test!
 		G.set('S', output_scale_S)
-		G.set('B', 5)
 		net.eval()
-		metrics, timer = Accumulator(7), Timer()
+		metrics, timer = [Accumulator(7) for _ in range(num_scales + 1)], Timer()
 		with torch.no_grad():
 			timer.start()
 
@@ -244,11 +243,11 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 				calc.add_data(yhat, y)
 
 				for j, (y_single, yhat_single) in enumerate(zip(y, yhat)):
-					coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = loss(yhat, y, 1000000) # very big epoch number to omit prior loss
+					coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = loss(yhat_single, y_single, 1000000) # very big epoch number to omit prior loss
 					loss_val = coord_loss + class_loss + no_obj_loss + obj_loss + prior_loss
-					metrics.add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
+					metrics[j].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
 
-					print(f'epoch {epoch} batch {i + 1}/{len(test_iter)} scale {G.get("scale")[j]} test loss: {metrics[5] / metrics[6]}, S: {G.get("S")}, B: {G.get("B")}')
+					print(f'epoch {epoch} batch {i + 1}/{len(test_iter)} scale {G.get("scale")[j]} test loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
 
 			for j in range(num_scales + 1):
 				log_loss_tensorboard(metrics, epoch + 1, visualize_cnt, j, train=False)
@@ -267,10 +266,10 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 					p[i] = pr['precision']
 					r[i] = pr['recall']
 				pr_writer.add_pr_curve_raw(f'PR/{G.get("categories")[c]}', z1, z2, z3, z4, p, r, epoch + 1, len(pr_data))
-				# calculate VOC mAP
-				mAP += calc.calculate_average_precision(metrics_utils.InterpolationMethod.Interpolation_11, prl=pr_data)
+				# calculate COCO mAP AP@.5
+				mAP += calc.calculate_average_precision(metrics_utils.InterpolationMethod.Interpolation_101, prl=pr_data)
 			mAP /= G.get('num_classes')
-			writer.add_scalars(f'mAP/VOC', {log_id: mAP}, epoch + 1)
+			writer.add_scalars(f'mAP/AP@.5-random-part', {log_id: mAP}, epoch + 1)
 
 			timer.stop()
 
