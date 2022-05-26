@@ -12,7 +12,7 @@ from utils import G
 from yolo.loss import YoloLoss
 
 
-def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lr, optimizer: torch.optim.Optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_scaler: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10):
+def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lr, optimizer: torch.optim.Optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_scaler: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0):
 	"""trainer for yolo v2. 
 	Note: weight init is not done in this method, because the architecture
 	of yolo v2 is rather complicated with the design of pass through layer
@@ -39,6 +39,7 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 		load_scaler (Optional[str], optional): path of scaler state_dict to load if exist. Defaults to None.
 		load_epoch (int, optional): done epoch count minus one when loading, should be the same with the number in auto-saved file name. Defaults to -1.
 		visualize_cnt (int, optional): number of batches to visualize each epoch during training progress. Defaults to 10.
+		test_pr_batch_ratio (int, optional): ratio of batches to test average precision each epoch. Default to 1.0, that is all batches.
 	"""
 	os.makedirs(save_dir, exist_ok=True)
 
@@ -240,7 +241,9 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 			for i, (X, y) in enumerate(test_iter):
 				X, y = X.to(devices[0]), [ys.to(devices[0]) for ys in y]
 				yhat = net(X)
-				calc.add_data(yhat, y)
+
+				if i < len(test_iter) * test_pr_batch_ratio:
+					calc.add_data(yhat, y[0])
 
 				for j, (y_single, yhat_single) in enumerate(zip(y, yhat)):
 					coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = loss(yhat_single, y_single, 1000000) # very big epoch number to omit prior loss
