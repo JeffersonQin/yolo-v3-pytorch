@@ -155,12 +155,17 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 					loss_val = coord_loss + class_loss + no_obj_loss + obj_loss + prior_loss
 
 					# if NaN, do not affect training loop
-					if not torch.isnan(loss_val.sum()):
+					if not (torch.isnan(loss_val.sum()) or torch.isinf(loss_val.sum())):
 						total_loss = total_loss + loss_val.sum()
 
-					with torch.no_grad():
-						metrics[j].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
-						metrics[num_scales].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), 0)
+						with torch.no_grad():
+							metrics[j].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
+							metrics[num_scales].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), 0)
+					else:
+						metrics[num_scales].add(0, 0, 0, 0, 0, 0, -X.shape[0])
+						loss_alert = f'epoch: {epoch}, batch: {i}, coord_loss: {float(coord_loss.sum())}, class_loss: {float(class_loss.sum())}, no_obj_loss: {float(no_obj_loss.sum())}, obj_loss: {float(obj_loss.sum())}, prior_loss: {float(prior_loss.sum())}'
+						print(f'NaN/Inf occured: {loss_alert}')
+						writer.add_text(tag=f'nan-inf-alert/{log_id}', text_string=loss_alert, global_step=epoch*num_batches+i+1)
 
 					# log train loss
 					print(f'epoch {epoch} batch {i + 1}/{num_batches} scale {G.get("scale")[j]} loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
