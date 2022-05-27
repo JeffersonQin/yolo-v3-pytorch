@@ -12,7 +12,7 @@ from utils import G
 from yolo.loss import YoloLoss
 
 
-def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lr, optimizer: torch.optim.Optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_scaler: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0):
+def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lr, optimizer: torch.optim.Optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_scaler: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0, test_pr_after_epoch: int=0):
 	"""trainer for yolo v2. 
 	Note: weight init is not done in this method, because the architecture
 	of yolo v2 is rather complicated with the design of pass through layer
@@ -39,7 +39,8 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 		load_scaler (Optional[str], optional): path of scaler state_dict to load if exist. Defaults to None.
 		load_epoch (int, optional): done epoch count minus one when loading, should be the same with the number in auto-saved file name. Defaults to -1.
 		visualize_cnt (int, optional): number of batches to visualize each epoch during training progress. Defaults to 10.
-		test_pr_batch_ratio (int, optional): ratio of batches to test average precision each epoch. Default to 1.0, that is all batches.
+		test_pr_batch_ratio (float, optional): ratio of batches to test average precision each epoch. Default to 1.0, that is all batches.
+		test_pr_after_epoch (int, optional): test average precision after number of epoch. Defaults to 0.
 	"""
 	os.makedirs(save_dir, exist_ok=True)
 
@@ -247,37 +248,40 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 				X, y = X.to(devices[0]), [ys.to(devices[0]) for ys in y]
 				yhat = net(X)
 
-				if i < len(test_iter) * test_pr_batch_ratio:
+				if i < len(test_iter) * test_pr_batch_ratio and epoch >= test_pr_after_epoch:
 					calc.add_data(yhat, y[0])
 
 				for j, (y_single, yhat_single) in enumerate(zip(y, yhat)):
 					coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = loss(yhat_single, y_single, 1000000) # very big epoch number to omit prior loss
 					loss_val = coord_loss + class_loss + no_obj_loss + obj_loss + prior_loss
 					metrics[j].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
+					metrics[num_scales].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), 0)
 
 					print(f'epoch {epoch} batch {i + 1}/{len(test_iter)} scale {G.get("scale")[j]} test loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
+				metrics[num_scales].add(0, 0, 0, 0, 0, 0, X.shape[0])
 
 			for j in range(num_scales + 1):
-				log_loss_tensorboard(metrics, epoch + 1, visualize_cnt, j, train=False)
+				log_loss_tensorboard(metrics, epoch + 1, visualize_cnt, 0, j, train=False)
 
-			# log test mAP & PR Curve
-			mAP = 0
-			for c in range(G.get('num_classes')):
-				pr_data = calc.calculate_precision_recall(0.5, c)
-				p = torch.zeros(len(pr_data)) # precision
-				r = torch.zeros(len(pr_data)) # recall
-				z1 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
-				z2 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
-				z3 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
-				z4 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
-				for i, pr in enumerate(pr_data):
-					p[i] = pr['precision']
-					r[i] = pr['recall']
-				pr_writer.add_pr_curve_raw(f'PR/{G.get("categories")[c]}', z1, z2, z3, z4, p, r, epoch + 1, len(pr_data))
-				# calculate COCO mAP AP@.5
-				mAP += calc.calculate_average_precision(metrics_utils.InterpolationMethod.Interpolation_101, prl=pr_data)
-			mAP /= G.get('num_classes')
-			writer.add_scalars(f'mAP/AP@.5-random-part', {log_id: mAP}, epoch + 1)
+			if epoch >= test_pr_after_epoch:
+				# log test mAP & PR Curve
+				mAP = 0
+				for c in range(G.get('num_classes')):
+					pr_data = calc.calculate_precision_recall(0.5, c)
+					p = torch.zeros(len(pr_data)) # precision
+					r = torch.zeros(len(pr_data)) # recall
+					z1 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
+					z2 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
+					z3 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
+					z4 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
+					for i, pr in enumerate(pr_data):
+						p[i] = pr['precision']
+						r[i] = pr['recall']
+					pr_writer.add_pr_curve_raw(f'PR/{G.get("categories")[c]}', z1, z2, z3, z4, p, r, epoch + 1, len(pr_data))
+					# calculate COCO mAP AP@.5
+					mAP += calc.calculate_average_precision(metrics_utils.InterpolationMethod.Interpolation_101, prl=pr_data)
+				mAP /= G.get('num_classes')
+				writer.add_scalars(f'mAP/AP@.5-random-part', {log_id: mAP}, epoch + 1)
 
 			timer.stop()
 
