@@ -196,8 +196,7 @@ class YoloLoss(nn.Module):
 		obj_loss = obj_loss.sum(dim=(1, 2, 3))
 		# 5. prior loss
 		if epoch < self.epoch_prior:
-			anchors = G.get('anchors').to(yhat.device)
-			prior_loss = ((yhat[:, :, :, :, 2:4] - anchors) ** 2).sum(dim=(3, 4)) * self.lambda_prior
+			prior_loss = ((yhat[:, :, :, :, 2:4] - anchors[scale_idx]) ** 2).sum(dim=(3, 4)) * self.lambda_prior
 			prior_loss = prior_loss.sum(dim=(1, 2))
 		else: prior_loss = torch.Tensor([0]).to(yhat.device)
 
