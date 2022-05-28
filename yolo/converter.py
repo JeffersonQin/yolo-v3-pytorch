@@ -11,7 +11,7 @@ class YoloAnchorLayer(nn.Module):
 	def __init__(self):
 		"""Apply anchors to the output"""
 		super(YoloAnchorLayer, self).__init__()
-		self.anchors = G.get('anchors')
+		self.anchors_ln = torch.log(G.get('anchors'))
 
 
 	def forward(self, X: torch.Tensor) -> torch.Tensor:
@@ -26,7 +26,7 @@ class YoloAnchorLayer(nn.Module):
 		Returns:
 			torch.Tensor: (#, S, S, B*(5+num_classes) [num_filter])
 		"""
-		self.anchors = self.anchors.to(X.device)
+		self.anchors_ln = self.anchors_ln.to(X.device)
 		S = G.get('S')
 		B = G.get('B')
 		SR = X.shape[2]
@@ -44,8 +44,8 @@ class YoloAnchorLayer(nn.Module):
 
 		XC[..., 0:2] = X[..., 0:2].sigmoid()
 		XC[..., 4:(5 + num_classes)] = X[..., 4:(5 + num_classes)].sigmoid()
-		XC[..., 2] = X[..., 2].exp() * self.anchors[scale_idx][:, 0]
-		XC[..., 3] = X[..., 3].exp() * self.anchors[scale_idx][:, 1]
+		XC[..., 2] = (X[..., 2] * self.anchors_ln[scale_idx][:, 0]).exp()
+		XC[..., 3] = (X[..., 3] * self.anchors_ln[scale_idx][:, 1]).exp()
 		
 		# reshape back
 		XC = XC.reshape(shape)
