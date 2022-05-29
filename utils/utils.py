@@ -1,3 +1,4 @@
+from math import cos, pi
 import torch
 import numpy as np
 import time
@@ -26,6 +27,14 @@ def update_lr(opt: torch.optim.Optimizer, lr: float):
 	"""
 	for param_group in opt.param_groups:
 		param_group['lr'] = lr
+
+
+def linear_warmup_cosine_lr_scheduler(linear_max, warmup_epoch, T_half):
+	def lr(epoch):
+		if epoch < warmup_epoch: return linear_max / warmup_epoch * (epoch + 1)
+		epoch = (epoch - warmup_epoch) % T_half
+		return linear_max * 0.5 * (1 + cos(epoch / T_half * pi))
+	return lr
 
 
 # from d2l
