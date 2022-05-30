@@ -166,18 +166,24 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 						metrics[num_scales].add(0, 0, 0, 0, 0, 0, -X.shape[0])
 						loss_alert = f'epoch: {epoch}, batch: {i}, coord_loss: {float(coord_loss.sum())}, class_loss: {float(class_loss.sum())}, no_obj_loss: {float(no_obj_loss.sum())}, obj_loss: {float(obj_loss.sum())}, prior_loss: {float(prior_loss.sum())}'
 						print(f'NaN/Inf occured: {loss_alert}')
+						with open(os.path.join(save_dir, f'./{log_id}-nan-inf-alert.txt'), 'a+') as f:
+							f.write(f'{loss_alert}\n')
 						writer.add_text(tag=f'nan-inf-alert/{log_id}', text_string=loss_alert, global_step=epoch*num_batches+i+1)
 
 					# log train loss
-					print(f'epoch {epoch} batch {i + 1}/{num_batches} scale {G.get("scale")[j]} loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
-					if plot_indices > 0:
-						log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, j, train=True)
+					if metrics[j][6] > 0:
+						print(f'epoch {epoch} batch {i + 1}/{num_batches} scale {G.get("scale")[j]} loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
+						if plot_indices > 0:
+							log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, j, train=True)
+					else: print(f'epoch {epoch} batch {i + 1}/{num_batches} scale {G.get("scale")[j]} loss: ZeroDivisionError, S: {G.get("S")}, B: {G.get("B")}')
 
 				# log total scale loss
 				metrics[num_scales].add(0, 0, 0, 0, 0, 0, X.shape[0])
-				print(f'epoch {epoch} batch {i + 1}/{num_batches} total loss: {metrics[num_scales][5] / metrics[num_scales][6]}, S: {G.get("S")}, B: {G.get("B")}')
-				if plot_indices > 0:
-					log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, num_scales, train=True)
+				if metrics[num_scales][6] > 0:
+					print(f'epoch {epoch} batch {i + 1}/{num_batches} total loss: {metrics[num_scales][5] / metrics[num_scales][6]}, S: {G.get("S")}, B: {G.get("B")}')
+					if plot_indices > 0:
+						log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, num_scales, train=True)
+				else: print(f'epoch {epoch} batch {i + 1}/{num_batches} total loss: ZeroDivisionError, S: {G.get("S")}, B: {G.get("B")}')
 
 			# backward to accumulate gradients
 			if mix_precision:
