@@ -15,7 +15,8 @@ class YoloLoss(nn.Module):
 		lambda_prior: float=0.0, 
 		IoU_thres: float=0.7, 
 		epoch_prior: int=0, 
-		scale_coord: bool = True):
+		scale_coord: bool = True, 
+		no_obj_v3: bool = True):
 		"""Yolo loss.
 
 			Written according to https://github.com/AlexeyAB/darknet/issues/821
@@ -43,8 +44,10 @@ class YoloLoss(nn.Module):
 			IoU_thres (float): IoU threshold while determining no_obj. Defaults to 0.5.
 			epoch_prior (int): epoch for learning prior boxes. Defaults to 20.
 			scale_coord (bool, optional): whether to scale coordinates (time (2 - w * h)). Defaults to True.
+			no_obj_v3 (bool, optional): v3 version of no_obj.
 		"""
 		super(YoloLoss, self).__init__()
+		self.mseloss = nn.MSELoss(reduction='none')
 		self.converter = Yolo2BBoxSingle()
 		self.lambda_coord = lambda_coord
 		self.lambda_noobj = lambda_noobj
@@ -54,6 +57,7 @@ class YoloLoss(nn.Module):
 		self.IoU_thres = IoU_thres
 		self.epoch_prior = epoch_prior
 		self.scale_coord = scale_coord
+		self.no_obj_v3 = no_obj_v3
 
 
 	def cfg_yolov2(self):
@@ -66,6 +70,7 @@ class YoloLoss(nn.Module):
 		self.IoU_thres = 0.6
 		self.epoch_prior = 20
 		self.scale_coord = False
+		self.no_obj_v3 = False
 
 
 	def cfg_yolov3(self):
@@ -78,6 +83,7 @@ class YoloLoss(nn.Module):
 		self.IoU_thres = 0.7
 		self.epoch_prior = 0
 		self.scale_coord = True
+		self.no_obj_v3 = True
 
 
 	def forward(self, yhat: torch.Tensor, y: torch.Tensor, epoch: int) -> list[torch.Tensor]:
@@ -177,26 +183,31 @@ class YoloLoss(nn.Module):
 		xy_hat = yhat_res[:, :, :, :, 0:2]
 		xy_y = y[:, :, :, :, 0:2]
 		# calculate loss
-		coord_loss = ((xy_hat - xy_y) ** 2 + (wh_hat_res - wh_true) ** 2).sum(dim=4) \
+		coord_loss = (self.mseloss(xy_hat, xy_y) + self.mseloss(wh_hat_res, wh_true)).sum(dim=4) \
 			* have_obj * self.lambda_coord
 		if self.scale_coord:
 			coord_loss = coord_loss * (2 - y[:, :, :, :, 2] * y[:, :, :, :, 3])
 		coord_loss = coord_loss.sum(dim=(1, 2, 3))
 		# 2. class loss
-		class_loss = ((yhat_res[:, :, :, :, 5:] - y[:, :, :, :, 5:]) ** 2).sum(dim=(4)) \
+		class_loss = self.mseloss(yhat_res[:, :, :, :, 5:], y[:, :, :, :, 5:]).sum(dim=(4)) \
 			* have_obj * self.lambda_class
 		class_loss = class_loss.sum(dim=(1, 2, 3))
 		# 3. no_obj loss
-		no_obj_loss = ((yhat[:, :, :, :, 4] - y[:, :, :, :, 4]) ** 2) \
+		if self.no_obj_v3:
+			no_obj_t = torch.zeros_like(y[:, :, :, :, 4])
+		else:
+			no_obj_t = y[:, :, :, :, 4]
+		no_obj_t = no_obj_t.to(yhat.device)
+		no_obj_loss = self.mseloss(yhat[:, :, :, :, 4], no_obj_t) \
 			* no_obj_iou * self.lambda_noobj
 		no_obj_loss = no_obj_loss.sum(dim=(1, 2, 3))
 		# 4. obj loss
-		obj_loss = (yhat_res[:, :, :, :, 4] - y[:, :, :, :, 4]) ** 2 \
+		obj_loss = self.mseloss(yhat_res[:, :, :, :, 4], y[:, :, :, :, 4]) \
 			* have_obj * self.lambda_obj
 		obj_loss = obj_loss.sum(dim=(1, 2, 3))
 		# 5. prior loss
 		if epoch < self.epoch_prior:
-			prior_loss = ((yhat[:, :, :, :, 2:4] - anchors[scale_idx]) ** 2).sum(dim=(3, 4)) * self.lambda_prior
+			prior_loss = self.mseloss(yhat[:, :, :, :, 2:4], anchors[scale_idx]).sum(dim=(3, 4)) * self.lambda_prior
 			prior_loss = prior_loss.sum(dim=(1, 2))
 		else: prior_loss = torch.Tensor([0]).to(yhat.device)
 
