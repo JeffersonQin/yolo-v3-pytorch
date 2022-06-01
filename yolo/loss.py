@@ -16,7 +16,8 @@ class YoloLoss(nn.Module):
 		IoU_thres: float=0.7, 
 		epoch_prior: int=0, 
 		scale_coord: bool = True, 
-		no_obj_v3: bool = True):
+		no_obj_v3: bool = True, 
+		eps: float = 1e-6):
 		"""Yolo loss.
 
 			Written according to https://github.com/AlexeyAB/darknet/issues/821
@@ -45,6 +46,7 @@ class YoloLoss(nn.Module):
 			epoch_prior (int): epoch for learning prior boxes. Defaults to 20.
 			scale_coord (bool, optional): whether to scale coordinates (time (2 - w * h)). Defaults to True.
 			no_obj_v3 (bool, optional): v3 version of no_obj.
+			eps (float, optional): epsilon.
 		"""
 		super(YoloLoss, self).__init__()
 		self.mseloss = nn.MSELoss(reduction='none')
@@ -58,6 +60,7 @@ class YoloLoss(nn.Module):
 		self.epoch_prior = epoch_prior
 		self.scale_coord = scale_coord
 		self.no_obj_v3 = no_obj_v3
+		self.eps = eps
 
 
 	def cfg_yolov2(self):
@@ -71,6 +74,7 @@ class YoloLoss(nn.Module):
 		self.epoch_prior = 20
 		self.scale_coord = False
 		self.no_obj_v3 = False
+		self.eps = 1e-6
 
 
 	def cfg_yolov3(self):
@@ -84,6 +88,7 @@ class YoloLoss(nn.Module):
 		self.epoch_prior = 0
 		self.scale_coord = True
 		self.no_obj_v3 = True
+		self.eps = 1e-6
 
 
 	def forward(self, yhat: torch.Tensor, y: torch.Tensor, epoch: int) -> list[torch.Tensor]:
@@ -145,7 +150,7 @@ class YoloLoss(nn.Module):
 			intersection = __intersection__()
 			union = (yhat_bbox[..., 2] - yhat_bbox[..., 0]) * (yhat_bbox[..., 3] - yhat_bbox[..., 1]) + \
 					(y_bbox[..., 2] - y_bbox[..., 0]) * (y_bbox[..., 3] - y_bbox[..., 1]) - intersection
-			IoU = intersection / (union + 1e-12)
+			IoU = intersection / (union + self.eps)
 
 			# [N, S, S, B (YHat), B (Y)] => [N, S, S, B (YHat)]
 			MaxIoU = IoU.max(dim=4, keepdim=False)[0]
@@ -161,8 +166,8 @@ class YoloLoss(nn.Module):
 		# width and height (reversed tw and th)
 		# [N, S, S, B, 2]
 		anchors = G.get('anchors').to(yhat.device)
-		wh_hat = torch.log((yhat[:, :, :, :, 2:4] / anchors[scale_idx]) + 1e-12)
-		wh_true = torch.log((y[:, :, :, :, 2:4] / anchors[scale_idx]) + 1e-12)
+		wh_hat = torch.log((yhat[:, :, :, :, 2:4] / anchors[scale_idx]) + self.eps)
+		wh_true = torch.log((y[:, :, :, :, 2:4] / anchors[scale_idx]) + self.eps)
 
 		# pick responsible data
 		# ground truth (y) remain the same
