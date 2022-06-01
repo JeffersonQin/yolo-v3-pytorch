@@ -107,6 +107,10 @@ class ObjectDetectionMetricsCalculator():
 		# [N, M]
 		x1, y1, x2, y2 = truth[:, :, 0], truth[:, :, 1], truth[:, :, 2], truth[:, :, 3]
 		x1_hat, y1_hat, x2_hat, y2_hat = pred[:, :, 0], pred[:, :, 1], pred[:, :, 2], pred[:, :, 3]
+		x1_hat = torch.max(x1_hat, torch.zeros_like(x1_hat))
+		y1_hat = torch.max(y1_hat, torch.zeros_like(y1_hat))
+		x2_hat = torch.min(x2_hat, torch.ones_like(x2_hat))
+		y2_hat = torch.min(y2_hat, torch.ones_like(y2_hat))
 		# [N, M]
 		wi = torch.min(x2, x2_hat) - torch.max(x1, x1_hat)
 		hi = torch.min(y2, y2_hat) - torch.max(y1, y1_hat)
