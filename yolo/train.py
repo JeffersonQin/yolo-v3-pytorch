@@ -12,7 +12,7 @@ from utils import G
 from yolo.loss import YoloLoss
 
 
-def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lr, optimizer: torch.optim.Optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_scaler: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0, test_pr_after_epoch: int=0):
+def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lambda_scale: list[float], lr, optimizer: torch.optim.Optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0, test_pr_after_epoch: int=0):
 	"""trainer for yolo v2. 
 	Note: weight init is not done in this method, because the architecture
 	of yolo v2 is rather complicated with the design of pass through layer
@@ -24,6 +24,7 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 		num_epochs (int): number of epochs to train
 		multi_scale_epoch (int): number of epochs to train with multi scale
 		output_scale_S (int): final network scale (S), input size will be 32S * 32S, as the network stride is 32
+		lambda_scale (list[float]): lambda list for each scale
 		lr (float | callable): learning rate or learning rate scheduler function relative to epoch
 		optimizer (torch.optim.Optimizer): optimizer
 		log_id (str): identifier for logging in tensorboard.
@@ -36,7 +37,6 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 		save_dir (str, optional): saving directory for model weights. Defaults to './model'.
 		load_model (Optional[str], optional): path of model weights to load if exist. Defaults to None.
 		load_optim (Optional[str], optional): path of optimizer state_dict to load if exist. Defaults to None.
-		load_scaler (Optional[str], optional): path of scaler state_dict to load if exist. Defaults to None.
 		load_epoch (int, optional): done epoch count minus one when loading, should be the same with the number in auto-saved file name. Defaults to -1.
 		visualize_cnt (int, optional): number of batches to visualize each epoch during training progress. Defaults to 10.
 		test_pr_batch_ratio (float, optional): ratio of batches to test average precision each epoch. Default to 1.0, that is all batches.
@@ -69,8 +69,6 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 
 	if mix_precision:
 		scaler = torch.cuda.amp.GradScaler()
-	if load_scaler:
-		scaler.load_state_dict(torch.load(load_scaler))
 
 	num_batches = len(train_iter)
 	num_scales = len(G.get('scale'))
@@ -152,7 +150,7 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 				total_loss = 0
 
 				for j, (y_single, yhat_single) in enumerate(zip(y, yhat)):
-					coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = loss(yhat_single, y_single, epoch)
+					coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = [l * lambda_scale[j] for l in loss(yhat_single, y_single, epoch)]
 					loss_val = coord_loss + class_loss + no_obj_loss + obj_loss + prior_loss
 
 					# if NaN, do not affect training loop
@@ -237,8 +235,6 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 		torch.save(net.state_dict(), os.path.join(save_dir, f'./{log_id}-model-{epoch}.pth'))
 		# save optim
 		torch.save(optimizer.state_dict(), os.path.join(save_dir, f'./{log_id}-optim-{epoch}.pth'))
-		# save scaler
-		torch.save(scaler.state_dict(), os.path.join(save_dir, f'./{log_id}-scaler-{epoch}.pth'))
 
 		# test!
 		G.set('S', output_scale_S)
@@ -258,7 +254,7 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 					calc.add_data(yhat, y[0])
 
 				for j, (y_single, yhat_single) in enumerate(zip(y, yhat)):
-					coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = loss(yhat_single, y_single, 1000000) # very big epoch number to omit prior loss
+					coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = [l * lambda_scale[j] for l in loss(yhat_single, y_single, 1000000)] # very big epoch number to omit prior loss
 					loss_val = coord_loss + class_loss + no_obj_loss + obj_loss + prior_loss
 					metrics[j].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
 					metrics[num_scales].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), 0)
