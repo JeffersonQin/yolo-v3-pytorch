@@ -51,16 +51,18 @@ class ObjectDetectionMetricsCalculator():
 	]
 	"""
 
-	def __init__(self, num_classes: int, confidence_thres: float):
+	def __init__(self, num_classes: int, confidence_thres: float, retain_ratio_thres: float=0.05):
 		"""ObjectDetectionMetricsCalculator Initialization
 
 		Args:
 			num_classes (int): number of classes detector can classify
 			confidence_thres (float): confidence threshold. if the detection's confidence is smaller than the threshold, it would not be counted as a detection. In other words, it would be neither TP nor FP.
+			retain_ratio_thres (float): it is sometimes really hard to choose a good confidence_thres as the range of confidence change while training. As a result, this parameter is used to specific the maximum ratio of data to retain when calculating metrics. Be caution: param `confidence_thres` has higher priority than this parameter.
 		"""
 		# initialize data
 		self.data = [{"data": [], "detection": 0, "truth": 0} for _ in range(num_classes)]
 		self.confidence_thres = confidence_thres
+		self.retain_ratio_thres = retain_ratio_thres
 
 
 	def _add_data(self, pred: torch.Tensor, truth: torch.Tensor):
@@ -78,9 +80,12 @@ class ObjectDetectionMetricsCalculator():
 		# obtain objectiveness, categories, and confidences
 		score_hat, cat_hat = pred[:, 5:(5 + num_classes)].max(dim=1)
 		confidence_hat = pred[:, 4]
+		# calculate threshold
+		thres_from_ratio = float(torch.sort(confidence_hat * score_hat, descending=True)[0][int(pred.shape[0] * self.retain_ratio_thres) - 1])
+		thres = max(thres_from_ratio, self.confidence_thres)
 
 		# filter out the detection with confidence lower than the threshold
-		pred = pred[confidence_hat * score_hat > self.confidence_thres]
+		pred = pred[confidence_hat * score_hat > thres]
 		# update the score and category
 		score_hat, cat_hat = pred[:, 5:(5 + num_classes)].max(dim=1)
 		confidence_hat = pred[:, 4]
@@ -160,12 +165,15 @@ class ObjectDetectionMetricsCalculator():
 		return
 		choose_truth_index = [None for _ in range(pred.shape[0])]
 		iou = [0 for _ in range(pred.shape[0])]
+		# calculate threshold
+		thres_from_ratio = float(torch.sort(confidence_hat * score_hat, descending=True)[int(pred.shape[0] * self.retain_ratio_thres) - 1])
+		thres = max(thres_from_ratio, self.confidence_thres)
 
 		for i in range(pred.shape[0]):
 			score_hat, cat_hat = pred[i][5:(5 + num_classes)].max(dim=0)
 			confidence_hat = pred[i][4]
 			# filter by confidence threshold
-			if confidence_hat * score_hat < self.confidence_thres: continue
+			if confidence_hat * score_hat < thres: continue
 
 			x1hat, y1hat, x2hat, y2hat = pred[i][0:4]
 
@@ -203,7 +211,7 @@ class ObjectDetectionMetricsCalculator():
 			score, cat = pred[i][5:(5 + num_classes)].max(dim=0)
 			confidence = pred[i][4]
 			# filter by confidence threshold
-			if confidence * score < self.confidence_thres: continue
+			if confidence * score < thres: continue
 
 			truth_index = choose_truth_index[i]
 			if truth_index == None: 
