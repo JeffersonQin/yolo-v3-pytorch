@@ -12,7 +12,7 @@ from utils import G
 from yolo.loss import YoloLoss
 
 
-def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lambda_scale: list[float], lr, optimizer: torch.optim.Optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0, test_pr_after_epoch: int=0):
+def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lambda_scale: list[float], pr_thres: float, lr, optimizer: torch.optim.Optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0, test_pr_after_epoch: int=0):
 	"""trainer for yolo v2. 
 	Note: weight init is not done in this method, because the architecture
 	of yolo v2 is rather complicated with the design of pass through layer
@@ -25,6 +25,7 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 		multi_scale_epoch (int): number of epochs to train with multi scale
 		output_scale_S (int): final network scale (S), input size will be 32S * 32S, as the network stride is 32
 		lambda_scale (list[float]): lambda list for each scale
+		pr_thres (float): precision-recall threshold
 		lr (float | callable): learning rate or learning rate scheduler function relative to epoch
 		optimizer (torch.optim.Optimizer): optimizer
 		log_id (str): identifier for logging in tensorboard.
@@ -245,7 +246,7 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 		with torch.no_grad():
 			timer.start()
 
-			calc = metrics_utils.ObjectDetectionMetricsCalculator(G.get('num_classes'), 0.1)
+			calc = metrics_utils.ObjectDetectionMetricsCalculator(G.get('num_classes'), pr_thres)
 
 			# test loss
 			for i, (X, y) in enumerate(test_iter):
