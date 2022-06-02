@@ -277,6 +277,7 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 				mAPVOC = 0
 				for c in range(G.get('num_classes')):
 					pr_data = calc.calculate_precision_recall(0.5, c)
+					if len(pr_data) <= 0: continue
 					p = torch.zeros(len(pr_data)) # precision
 					r = torch.zeros(len(pr_data)) # recall
 					z1 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
