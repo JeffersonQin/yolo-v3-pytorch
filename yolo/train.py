@@ -271,7 +271,8 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 
 			if epoch >= test_pr_after_epoch:
 				# log test mAP & PR Curve
-				mAP = 0
+				mAP5 = 0
+				mAPVOC = 0
 				for c in range(G.get('num_classes')):
 					pr_data = calc.calculate_precision_recall(0.5, c)
 					p = torch.zeros(len(pr_data)) # precision
@@ -285,9 +286,13 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 						r[i] = pr['recall']
 					pr_writer.add_pr_curve_raw(f'PR/{G.get("categories")[c]}', z1, z2, z3, z4, p, r, epoch + 1, len(pr_data))
 					# calculate COCO mAP AP@.5
-					mAP += calc.calculate_average_precision(metrics_utils.InterpolationMethod.Interpolation_101, prl=pr_data)
-				mAP /= G.get('num_classes')
-				writer.add_scalars(f'mAP/AP@.5-random-part', {log_id: mAP}, epoch + 1)
+					mAP5 += calc.calculate_average_precision(metrics_utils.InterpolationMethod.Interpolation_101, prl=pr_data)
+					# calculate VOC mAP
+					mAPVOC += calc.calculate_average_precision(metrics_utils.InterpolationMethod.Interpolation_11, prl=pr_data)
+				mAP5 /= G.get('num_classes')
+				mAPVOC /= G.get('num_classes')
+				writer.add_scalars(f'mAP/AP@.5-random-part', {log_id: mAP5}, epoch + 1)
+				writer.add_scalars(f'mAP/VOCmAP-random-part', {log_id: mAPVOC}, epoch + 1)
 
 			timer.stop()
 
