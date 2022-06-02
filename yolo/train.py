@@ -150,7 +150,9 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 				total_loss = 0
 
 				for j, (y_single, yhat_single) in enumerate(zip(y, yhat)):
-					coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = [l * lambda_scale[j] for l in loss(yhat_single, y_single, epoch)]
+					coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = loss(yhat_single, y_single, epoch)
+					no_obj_loss = no_obj_loss * lambda_scale[j]
+					prior_loss = prior_loss * lambda_scale[j]
 					loss_val = coord_loss + class_loss + no_obj_loss + obj_loss + prior_loss
 
 					# if NaN, do not affect training loop
@@ -254,7 +256,9 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 					calc.add_data(yhat, y[0])
 
 				for j, (y_single, yhat_single) in enumerate(zip(y, yhat)):
-					coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = [l * lambda_scale[j] for l in loss(yhat_single, y_single, 1000000)] # very big epoch number to omit prior loss
+					coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = loss(yhat_single, y_single, 1000000) # very big epoch number to omit prior loss
+					no_obj_loss = no_obj_loss * lambda_scale[j]
+					prior_loss = prior_loss * lambda_scale[j]
 					loss_val = coord_loss + class_loss + no_obj_loss + obj_loss + prior_loss
 					metrics[j].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
 					metrics[num_scales].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), 0)
