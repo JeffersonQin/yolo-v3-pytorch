@@ -1,5 +1,7 @@
 import os
 import random
+import sys
+import traceback
 from typing import Optional
 import torch
 import torch.nn as nn
@@ -12,7 +14,7 @@ from utils import G
 from yolo.loss import YoloLoss
 
 
-def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lambda_scale: list[float], conf_thres: float, conf_ratio_thres: float, lr, optimizer: torch.optim.Optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0, test_pr_after_epoch: int=0):
+def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lambda_scale: list[float], conf_thres: float, conf_ratio_thres: float, lr, optimizer: torch.optim.Optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0, test_pr_after_epoch: int=0, skip_nan_inf: bool=False, auto_restore: bool=True):
 	"""trainer for yolo v2. 
 	Note: weight init is not done in this method, because the architecture
 	of yolo v2 is rather complicated with the design of pass through layer
@@ -43,6 +45,8 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 		visualize_cnt (int, optional): number of batches to visualize each epoch during training progress. Defaults to 10.
 		test_pr_batch_ratio (float, optional): ratio of batches to test average precision each epoch. Default to 1.0, that is all batches.
 		test_pr_after_epoch (int, optional): test average precision after number of epoch. Defaults to 0.
+		skip_nan_inf (bool, optional): whether to skip nan and inf in loss. Defaults to False.
+		auto_restore (bool, optional): whether to restore model and optimizer state_dict after nan/inf or exception occurred. Defaults to True.
 	"""
 	os.makedirs(save_dir, exist_ok=True)
 
@@ -125,10 +129,29 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 		writer.add_scalars(f'loss/{log_id}/obj-{suffix}', {prefix: metrics[j][3] / metrics[j][6],}, epoch * visualize_cnt + plot_indices)
 		writer.add_scalars(f'loss/{log_id}/prior-{suffix}', {prefix: metrics[j][4] / metrics[j][6],}, epoch * visualize_cnt + plot_indices)
 
+
+	def load_model_and_optim(epoch: int):
+		try:
+			net.load_state_dict(torch.load(os.path.join(save_dir, f'./{log_id}-model-{epoch}.pth')))
+			optimizer.load_state_dict(torch.load(os.path.join(save_dir, f'./{log_id}-optim-{epoch}.pth')))
+		except Exception as _:
+			traceback.print_exc()
+			traceback.print_stack()
+			traceback.print_exception()
+			print('load model and optim failed')
+			sys.exit(1)
+
+
+	def log_text(msg: str):
+		print(msg)
+		with open(os.path.join(save_dir, f'./{log_id}-alert.txt'), 'a+') as f:
+			f.write(f'{msg}\n')
+
+
 	# train
-	for epoch in range(num_epochs - load_epoch - 1):
-		# adjust true epoch number according to pre_load
-		epoch = epoch + load_epoch + 1
+	epoch = load_epoch
+	while epoch + 1 < num_epochs:
+		epoch += 1
 
 		# define metrics: coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss, train loss, sample count
 		metrics = [Accumulator(7) for _ in range(num_scales + 1)]
@@ -165,27 +188,23 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 							metrics[j].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
 							metrics[num_scales].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), 0)
 					else:
-						metrics[num_scales].add(0, 0, 0, 0, 0, 0, -X.shape[0])
-						loss_alert = f'epoch: {epoch}, batch: {i}, coord_loss: {float(coord_loss.sum())}, class_loss: {float(class_loss.sum())}, no_obj_loss: {float(no_obj_loss.sum())}, obj_loss: {float(obj_loss.sum())}, prior_loss: {float(prior_loss.sum())}'
-						print(f'NaN/Inf occured: {loss_alert}')
-						with open(os.path.join(save_dir, f'./{log_id}-nan-inf-alert.txt'), 'a+') as f:
-							f.write(f'{loss_alert}\n')
-						writer.add_text(tag=f'nan-inf-alert/{log_id}', text_string=loss_alert, global_step=epoch*num_batches+i+1)
+						loss_alert = f'[NaN/Inf occurred] epoch: {epoch}, batch: {i}, coord_loss: {float(coord_loss.sum())}, class_loss: {float(class_loss.sum())}, no_obj_loss: {float(no_obj_loss.sum())}, obj_loss: {float(obj_loss.sum())}, prior_loss: {float(prior_loss.sum())}'
+						log_text(loss_alert)
+						if skip_nan_inf:
+							metrics[num_scales].add(0, 0, 0, 0, 0, 0, -X.shape[0])
+						else:
+							raise Exception(loss_alert)
 
 					# log train loss
-					if metrics[j][6] > 0:
-						print(f'epoch {epoch} batch {i + 1}/{num_batches} scale {G.get("scale")[j]} loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
-						if plot_indices > 0:
-							log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, j, train=True)
-					else: print(f'epoch {epoch} batch {i + 1}/{num_batches} scale {G.get("scale")[j]} loss: ZeroDivisionError, S: {G.get("S")}, B: {G.get("B")}')
+					print(f'epoch {epoch} batch {i + 1}/{num_batches} scale {G.get("scale")[j]} loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
+					if plot_indices > 0:
+						log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, j, train=True)
 
 				# log total scale loss
 				metrics[num_scales].add(0, 0, 0, 0, 0, 0, X.shape[0])
-				if metrics[num_scales][6] > 0:
-					print(f'epoch {epoch} batch {i + 1}/{num_batches} total loss: {metrics[num_scales][5] / metrics[num_scales][6]}, S: {G.get("S")}, B: {G.get("B")}')
-					if plot_indices > 0:
-						log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, num_scales, train=True)
-				else: print(f'epoch {epoch} batch {i + 1}/{num_batches} total loss: ZeroDivisionError, S: {G.get("S")}, B: {G.get("B")}')
+				print(f'epoch {epoch} batch {i + 1}/{num_batches} total loss: {metrics[num_scales][5] / metrics[num_scales][6]}, S: {G.get("S")}, B: {G.get("B")}')
+				if plot_indices > 0:
+					log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, num_scales, train=True)
 
 			# backward to accumulate gradients
 			if mix_precision:
@@ -262,6 +281,12 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 					no_obj_loss = no_obj_loss * lambda_scale[j]
 					prior_loss = prior_loss * lambda_scale[j]
 					loss_val = coord_loss + class_loss + no_obj_loss + obj_loss + prior_loss
+
+					if (torch.isnan(loss_val.sum()) or torch.isinf(loss_val.sum())) and auto_restore:
+						loss_alert = f'[NaN/Inf occurred] epoch: {epoch}, batch: {i}, coord_loss: {float(coord_loss.sum())}, class_loss: {float(class_loss.sum())}, no_obj_loss: {float(no_obj_loss.sum())}, obj_loss: {float(obj_loss.sum())}, prior_loss: {float(prior_loss.sum())}'
+						log_text(loss_alert)
+						raise Exception(loss_alert)
+
 					metrics[j].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
 					metrics[num_scales].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), 0)
 
