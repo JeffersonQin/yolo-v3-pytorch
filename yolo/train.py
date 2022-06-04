@@ -153,176 +153,187 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 	while epoch + 1 < num_epochs:
 		epoch += 1
 
-		# define metrics: coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss, train loss, sample count
-		metrics = [Accumulator(7) for _ in range(num_scales + 1)]
-		# define timer
-		timer = Timer()
+		try:
+			# define metrics: coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss, train loss, sample count
+			metrics = [Accumulator(7) for _ in range(num_scales + 1)]
+			# define timer
+			timer = Timer()
 
-		# train
-		net.train()
+			# train
+			net.train()
 
-		# set batch accumulator
-		accum_cnt = 0
-		accum = 0
+			# set batch accumulator
+			accum_cnt = 0
+			accum = 0
 
-		# iterate over batches
-		timer.start()
-		for i, (X, y) in enumerate(train_iter):
-			X, y = X.to(devices[0]), [ys.to(devices[0]) for ys in y]
-			with torch.autocast(devices[0].type, enabled=mix_precision):
-				yhat = net(X)
-				plot_indices = plot(i + 1, num_batches, visualize_cnt)
-				total_loss = 0
-
-				for j, (y_single, yhat_single) in enumerate(zip(y, yhat)):
-					coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = loss(yhat_single, y_single, epoch)
-					no_obj_loss = no_obj_loss * lambda_scale[j]
-					prior_loss = prior_loss * lambda_scale[j]
-					loss_val = coord_loss + class_loss + no_obj_loss + obj_loss + prior_loss
-
-					# if NaN, do not affect training loop
-					if not (torch.isnan(loss_val.sum()) or torch.isinf(loss_val.sum())):
-						total_loss = total_loss + loss_val.sum()
-
-						with torch.no_grad():
-							metrics[j].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
-							metrics[num_scales].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), 0)
-					else:
-						loss_alert = f'[NaN/Inf occurred] epoch: {epoch}, batch: {i}, coord_loss: {float(coord_loss.sum())}, class_loss: {float(class_loss.sum())}, no_obj_loss: {float(no_obj_loss.sum())}, obj_loss: {float(obj_loss.sum())}, prior_loss: {float(prior_loss.sum())}'
-						log_text(loss_alert)
-						if skip_nan_inf:
-							metrics[num_scales].add(0, 0, 0, 0, 0, 0, -X.shape[0])
-						else:
-							raise Exception(loss_alert)
-
-					# log train loss
-					print(f'epoch {epoch} batch {i + 1}/{num_batches} scale {G.get("scale")[j]} loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
-					if plot_indices > 0:
-						log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, j, train=True)
-
-				# log total scale loss
-				metrics[num_scales].add(0, 0, 0, 0, 0, 0, X.shape[0])
-				print(f'epoch {epoch} batch {i + 1}/{num_batches} total loss: {metrics[num_scales][5] / metrics[num_scales][6]}, S: {G.get("S")}, B: {G.get("B")}')
-				if plot_indices > 0:
-					log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, num_scales, train=True)
-
-			# backward to accumulate gradients
-			if mix_precision:
-				scaler.scale(total_loss.sum()).backward()
-			else: 
-				total_loss.sum().backward()
-
-			# update batch accumulator
-			accum += 1
-			accum_cnt += X.shape[0]
-			# step when accumulator is full
-			if accum == accum_batch_num or i == num_batches - 1:
-				# update learning rate per epoch and adjust by accumulated batch_size
-				if callable(lr):
-					update_lr(optimizer, lr(epoch) / accum_cnt)
-				else:
-					update_lr(optimizer, lr / accum_cnt)
-				# step
-				if mix_precision:
-					if grad_clip:
-						scaler.unscale_(optimizer)
-						torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=clip_max_norm)
-					scaler.step(optimizer)
-					scaler.update()
-				else:
-					if grad_clip:
-						torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=clip_max_norm)
-					optimizer.step()
-				# clear
-				optimizer.zero_grad()
-				accum_cnt = 0
-				accum = 0
-
-			# random choose a new image dimension size from
-			# [320, 352, 384, 416, 448, 480, 512, 544, 576, 608]
-			# that is, randomly adjust S between [10, 19]
-			if (i + 1) % 10 == 0 and epoch < multi_scale_epoch:
-				# make last two batches to adjust S
-				if i + 21 >= num_batches:
-					G.set('S', output_scale_S)
-				else:
-					G.set('S', random.randint(10, 19))
-			elif epoch >= multi_scale_epoch:
-				G.set('S', output_scale_S)
-
-		timer.stop()
-		# log train timing
-		writer.add_scalars(f'timing/{log_id}', {'train': timer.sum()}, epoch + 1)
-
-		# save model
-		torch.save(net.state_dict(), os.path.join(save_dir, f'./{log_id}-model-{epoch}.pth'))
-		# save optim
-		torch.save(optimizer.state_dict(), os.path.join(save_dir, f'./{log_id}-optim-{epoch}.pth'))
-
-		# test!
-		G.set('S', output_scale_S)
-		net.eval()
-		metrics, timer = [Accumulator(7) for _ in range(num_scales + 1)], Timer()
-		with torch.no_grad():
+			# iterate over batches
 			timer.start()
-
-			calc = metrics_utils.ObjectDetectionMetricsCalculator(G.get('num_classes'), conf_thres, conf_ratio_thres)
-
-			# test loss
-			for i, (X, y) in enumerate(test_iter):
+			for i, (X, y) in enumerate(train_iter):
 				X, y = X.to(devices[0]), [ys.to(devices[0]) for ys in y]
-				yhat = net(X)
+				with torch.autocast(devices[0].type, enabled=mix_precision):
+					yhat = net(X)
+					plot_indices = plot(i + 1, num_batches, visualize_cnt)
+					total_loss = 0
 
-				if i < len(test_iter) * test_pr_batch_ratio and epoch >= test_pr_after_epoch:
-					calc.add_data(yhat, y[0])
+					for j, (y_single, yhat_single) in enumerate(zip(y, yhat)):
+						coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = loss(yhat_single, y_single, epoch)
+						no_obj_loss = no_obj_loss * lambda_scale[j]
+						prior_loss = prior_loss * lambda_scale[j]
+						loss_val = coord_loss + class_loss + no_obj_loss + obj_loss + prior_loss
 
-				for j, (y_single, yhat_single) in enumerate(zip(y, yhat)):
-					coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = loss(yhat_single, y_single, 1000000) # very big epoch number to omit prior loss
-					no_obj_loss = no_obj_loss * lambda_scale[j]
-					prior_loss = prior_loss * lambda_scale[j]
-					loss_val = coord_loss + class_loss + no_obj_loss + obj_loss + prior_loss
+						# if NaN, do not affect training loop
+						if not (torch.isnan(loss_val.sum()) or torch.isinf(loss_val.sum())):
+							total_loss = total_loss + loss_val.sum()
 
-					if (torch.isnan(loss_val.sum()) or torch.isinf(loss_val.sum())) and auto_restore:
-						loss_alert = f'[NaN/Inf occurred] epoch: {epoch}, batch: {i}, coord_loss: {float(coord_loss.sum())}, class_loss: {float(class_loss.sum())}, no_obj_loss: {float(no_obj_loss.sum())}, obj_loss: {float(obj_loss.sum())}, prior_loss: {float(prior_loss.sum())}'
-						log_text(loss_alert)
-						raise Exception(loss_alert)
+							with torch.no_grad():
+								metrics[j].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
+								metrics[num_scales].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), 0)
+						else:
+							loss_alert = f'[NaN/Inf occurred] epoch: {epoch}, batch: {i}, coord_loss: {float(coord_loss.sum())}, class_loss: {float(class_loss.sum())}, no_obj_loss: {float(no_obj_loss.sum())}, obj_loss: {float(obj_loss.sum())}, prior_loss: {float(prior_loss.sum())}'
+							log_text(loss_alert)
+							if skip_nan_inf:
+								metrics[num_scales].add(0, 0, 0, 0, 0, 0, -X.shape[0])
+							else:
+								raise Exception(loss_alert)
 
-					metrics[j].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
-					metrics[num_scales].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), 0)
+						# log train loss
+						print(f'epoch {epoch} batch {i + 1}/{num_batches} scale {G.get("scale")[j]} loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
+						if plot_indices > 0:
+							log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, j, train=True)
 
-					print(f'epoch {epoch} batch {i + 1}/{len(test_iter)} scale {G.get("scale")[j]} test loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
-				metrics[num_scales].add(0, 0, 0, 0, 0, 0, X.shape[0])
+					# log total scale loss
+					metrics[num_scales].add(0, 0, 0, 0, 0, 0, X.shape[0])
+					print(f'epoch {epoch} batch {i + 1}/{num_batches} total loss: {metrics[num_scales][5] / metrics[num_scales][6]}, S: {G.get("S")}, B: {G.get("B")}')
+					if plot_indices > 0:
+						log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, num_scales, train=True)
 
-			for j in range(num_scales + 1):
-				log_loss_tensorboard(metrics, epoch + 1, visualize_cnt, 0, j, train=False)
+				# backward to accumulate gradients
+				if mix_precision:
+					scaler.scale(total_loss.sum()).backward()
+				else: 
+					total_loss.sum().backward()
 
-			if epoch >= test_pr_after_epoch:
-				# log test mAP & PR Curve
-				mAP5 = 0
-				mAPVOC = 0
-				for c in range(G.get('num_classes')):
-					pr_data = calc.calculate_precision_recall(0.5, c)
-					if len(pr_data) <= 0: continue
-					p = torch.zeros(len(pr_data)) # precision
-					r = torch.zeros(len(pr_data)) # recall
-					z1 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
-					z2 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
-					z3 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
-					z4 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
-					for i, pr in enumerate(pr_data):
-						p[i] = pr['precision']
-						r[i] = pr['recall']
-					pr_writer.add_pr_curve_raw(f'PR/{G.get("categories")[c]}', z1, z2, z3, z4, p, r, epoch + 1, len(pr_data))
-					# calculate COCO mAP AP@.5
-					mAP5 += calc.calculate_average_precision(metrics_utils.InterpolationMethod.Interpolation_101, prl=pr_data)
-					# calculate VOC mAP
-					mAPVOC += calc.calculate_average_precision(metrics_utils.InterpolationMethod.Interpolation_11, prl=pr_data)
-				mAP5 /= G.get('num_classes')
-				mAPVOC /= G.get('num_classes')
-				writer.add_scalars(f'mAP/AP@.5-random-part', {log_id: mAP5}, epoch + 1)
-				writer.add_scalars(f'mAP/VOCmAP-random-part', {log_id: mAPVOC}, epoch + 1)
+				# update batch accumulator
+				accum += 1
+				accum_cnt += X.shape[0]
+				# step when accumulator is full
+				if accum == accum_batch_num or i == num_batches - 1:
+					# update learning rate per epoch and adjust by accumulated batch_size
+					if callable(lr):
+						update_lr(optimizer, lr(epoch) / accum_cnt)
+					else:
+						update_lr(optimizer, lr / accum_cnt)
+					# step
+					if mix_precision:
+						if grad_clip:
+							scaler.unscale_(optimizer)
+							torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=clip_max_norm)
+						scaler.step(optimizer)
+						scaler.update()
+					else:
+						if grad_clip:
+							torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=clip_max_norm)
+						optimizer.step()
+					# clear
+					optimizer.zero_grad()
+					accum_cnt = 0
+					accum = 0
+
+				# random choose a new image dimension size from
+				# [320, 352, 384, 416, 448, 480, 512, 544, 576, 608]
+				# that is, randomly adjust S between [10, 19]
+				if (i + 1) % 10 == 0 and epoch < multi_scale_epoch:
+					# make last two batches to adjust S
+					if i + 21 >= num_batches:
+						G.set('S', output_scale_S)
+					else:
+						G.set('S', random.randint(10, 19))
+				elif epoch >= multi_scale_epoch:
+					G.set('S', output_scale_S)
 
 			timer.stop()
+			# log train timing
+			writer.add_scalars(f'timing/{log_id}', {'train': timer.sum()}, epoch + 1)
 
-			# log test timing
-			writer.add_scalars(f'timing/{log_id}', {'test': timer.sum()}, epoch + 1)
+			# save model
+			torch.save(net.state_dict(), os.path.join(save_dir, f'./{log_id}-model-{epoch}.pth'))
+			# save optim
+			torch.save(optimizer.state_dict(), os.path.join(save_dir, f'./{log_id}-optim-{epoch}.pth'))
+
+			# test!
+			G.set('S', output_scale_S)
+			net.eval()
+			metrics, timer = [Accumulator(7) for _ in range(num_scales + 1)], Timer()
+			with torch.no_grad():
+				timer.start()
+
+				calc = metrics_utils.ObjectDetectionMetricsCalculator(G.get('num_classes'), conf_thres, conf_ratio_thres)
+
+				# test loss
+				for i, (X, y) in enumerate(test_iter):
+					X, y = X.to(devices[0]), [ys.to(devices[0]) for ys in y]
+					yhat = net(X)
+
+					if i < len(test_iter) * test_pr_batch_ratio and epoch >= test_pr_after_epoch:
+						calc.add_data(yhat, y[0])
+
+					for j, (y_single, yhat_single) in enumerate(zip(y, yhat)):
+						coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = loss(yhat_single, y_single, 1000000) # very big epoch number to omit prior loss
+						no_obj_loss = no_obj_loss * lambda_scale[j]
+						prior_loss = prior_loss * lambda_scale[j]
+						loss_val = coord_loss + class_loss + no_obj_loss + obj_loss + prior_loss
+
+						if (torch.isnan(loss_val.sum()) or torch.isinf(loss_val.sum())) and auto_restore:
+							loss_alert = f'[NaN/Inf occurred] epoch: {epoch}, batch: {i}, coord_loss: {float(coord_loss.sum())}, class_loss: {float(class_loss.sum())}, no_obj_loss: {float(no_obj_loss.sum())}, obj_loss: {float(obj_loss.sum())}, prior_loss: {float(prior_loss.sum())}'
+							log_text(loss_alert)
+							raise Exception(loss_alert)
+
+						metrics[j].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
+						metrics[num_scales].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), 0)
+
+						print(f'epoch {epoch} batch {i + 1}/{len(test_iter)} scale {G.get("scale")[j]} test loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
+					metrics[num_scales].add(0, 0, 0, 0, 0, 0, X.shape[0])
+
+				for j in range(num_scales + 1):
+					log_loss_tensorboard(metrics, epoch + 1, visualize_cnt, 0, j, train=False)
+
+				if epoch >= test_pr_after_epoch:
+					# log test mAP & PR Curve
+					mAP5 = 0
+					mAPVOC = 0
+					for c in range(G.get('num_classes')):
+						pr_data = calc.calculate_precision_recall(0.5, c)
+						if len(pr_data) <= 0: continue
+						p = torch.zeros(len(pr_data)) # precision
+						r = torch.zeros(len(pr_data)) # recall
+						z1 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
+						z2 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
+						z3 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
+						z4 = torch.randint(0, len(pr_data), (len(pr_data),)) # dummy data
+						for i, pr in enumerate(pr_data):
+							p[i] = pr['precision']
+							r[i] = pr['recall']
+						pr_writer.add_pr_curve_raw(f'PR/{G.get("categories")[c]}', z1, z2, z3, z4, p, r, epoch + 1, len(pr_data))
+						# calculate COCO mAP AP@.5
+						mAP5 += calc.calculate_average_precision(metrics_utils.InterpolationMethod.Interpolation_101, prl=pr_data)
+						# calculate VOC mAP
+						mAPVOC += calc.calculate_average_precision(metrics_utils.InterpolationMethod.Interpolation_11, prl=pr_data)
+					mAP5 /= G.get('num_classes')
+					mAPVOC /= G.get('num_classes')
+					writer.add_scalars(f'mAP/AP@.5-random-part', {log_id: mAP5}, epoch + 1)
+					writer.add_scalars(f'mAP/VOCmAP-random-part', {log_id: mAPVOC}, epoch + 1)
+
+				timer.stop()
+
+				# log test timing
+				writer.add_scalars(f'timing/{log_id}', {'test': timer.sum()}, epoch + 1)
+		except Exception as e:
+			log_text(f'[Exception occurred] epoch: {epoch}, {repr(e)}')
+			log_text(f'exc: {traceback.format_exc()}')
+			log_text(f'stack: {traceback.format_stack}')
+			if auto_restore:
+				log_text(f'[auto restore] from {epoch} to {epoch - 1}')
+				epoch -= 1
+				load_model_and_optim(epoch)
+				continue
+
