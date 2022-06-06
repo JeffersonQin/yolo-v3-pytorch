@@ -29,6 +29,18 @@ def update_lr(opt: torch.optim.Optimizer, lr: float):
 		param_group['lr'] = lr
 
 
+def test_trigger():
+	"""test trigger, triggered when file './test_trigger' contains something"""
+	try:
+		with open('./test_trigger', 'r') as f:
+			c = f.read()
+			if len(c) > 0:
+				return True
+		return False
+	except:
+		return False
+
+
 class LearningRateScheduler:
 	def __init__(self, lr_scheduler, max_epoch):
 		self.lr_scheduler = lr_scheduler
