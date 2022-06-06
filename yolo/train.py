@@ -165,12 +165,7 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 			f.write(f'{msg}\n')
 
 
-	# train
-	epoch = load_epoch
-	while epoch + 1 < num_epochs:
-		epoch += 1
-
-		try:
+	def main_loop(epoch):
 			# define metrics: coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss, train loss, sample count
 			metrics = [Accumulator(7) for _ in range(num_scales + 1)]
 			# define timer
@@ -344,6 +339,15 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 
 				# log test timing
 				writer.add_scalars(f'timing/{log_id}', {'test': timer.sum()}, epoch + 1)
+
+
+	# train
+	epoch = load_epoch
+	while epoch + 1 < num_epochs:
+		epoch += 1
+
+		try:
+			main_loop(epoch)
 		except Exception as e:
 			log_text(f'[Exception occurred] epoch: {epoch}, {repr(e)}')
 			log_text(f'exc: {traceback.format_exc()}')
