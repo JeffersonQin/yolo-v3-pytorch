@@ -14,13 +14,13 @@ from utils import G
 from yolo.loss import YoloLoss
 
 
-def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lambda_scale: list[float], conf_thres: float, conf_ratio_thres: float, lr, optimizer: torch.optim.Optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0, test_pr_after_epoch: int=0, skip_nan_inf: bool=False, auto_restore: bool=True):
+def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lambda_scale: list[float], conf_thres: float, conf_ratio_thres: float, lr, get_optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0, test_pr_after_epoch: int=0, skip_nan_inf: bool=False, auto_restore: bool=True):
 	"""trainer for yolo v2. 
 	Note: weight init is not done in this method, because the architecture
 	of yolo v2 is rather complicated with the design of pass through layer
 
 	Args:
-		net (nn.Module): module network
+		get_net: module network getter
 		train_iter (DataLoader): training dataset iterator
 		test_iter (DataLoader): testing dataset iterator
 		num_epochs (int): number of epochs to train
@@ -30,7 +30,7 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 		conf_thres (float): confidence threshold when calculating (m)AP
 		conf_ratio_thres (float): confidence ratio threshold when calculating (m)AP
 		lr (float | callable): learning rate or learning rate scheduler function relative to epoch
-		optimizer (torch.optim.Optimizer): optimizer
+		get_optimizer: optimizer getter
 		log_id (str): identifier for logging in tensorboard.
 		loss (YoloLoss): loss function
 		num_gpu (int, optional): number of gpu to train on, used for parallel training. Defaults to 1.
@@ -49,6 +49,8 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 		auto_restore (bool, optional): whether to restore model and optimizer state_dict after nan/inf or exception occurred. Defaults to True.
 	"""
 	os.makedirs(save_dir, exist_ok=True)
+	net = get_net()
+	optimizer = get_optimizer(net)
 
 	# tensorboard
 	writer = tensorboard.SummaryWriter(f'logs/yolo')
@@ -130,16 +132,31 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 		writer.add_scalars(f'loss/{log_id}/prior-{suffix}', {prefix: metrics[j][4] / metrics[j][6],}, epoch * visualize_cnt + plot_indices)
 
 
-	def load_model_and_optim(epoch: int):
+	def load_model_and_optim(epoch: int, net):
 		try:
+			net.to('cpu')
+			# free memory
+			if torch.cuda.is_available():
+				for _ in range(10):
+					torch.cuda.empty_cache()
+			# redefine net and optimizer
+			net = get_net()
+			optimizer = get_optimizer(net)
+			# load model and optim
 			net.load_state_dict(torch.load(os.path.join(save_dir, f'./{log_id}-model-{epoch}.pth')))
+			net.to(devices[0])
 			optimizer.load_state_dict(torch.load(os.path.join(save_dir, f'./{log_id}-optim-{epoch}.pth')))
-		except Exception as _:
-			traceback.print_exc()
-			traceback.print_stack()
-			traceback.print_exception()
-			print('load model and optim failed')
-			sys.exit(1)
+			# free memory
+			if torch.cuda.is_available():
+				for _ in range(10):
+					torch.cuda.empty_cache()
+			return net, optimizer
+		except Exception as e:
+			log_text(f'[Exception occurred] epoch: {epoch}, {repr(e)}')
+			log_text(f'exc: {traceback.format_exc()}')
+			log_text(f'stack: {traceback.format_stack}')
+			log_text('load model and optim failed')
+			raise e
 
 
 	def log_text(msg: str):
@@ -334,6 +351,6 @@ def train(net: nn.Module, train_iter: DataLoader, test_iter: DataLoader, num_epo
 			if auto_restore:
 				log_text(f'[auto restore] from {epoch} to {epoch - 1}')
 				epoch -= 1
-				load_model_and_optim(epoch)
+				net, optimizer = load_model_and_optim(epoch, net)
 				continue
 
