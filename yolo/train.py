@@ -182,13 +182,13 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 				value='',
 				placeholder='',
 				description='status',
-				disabled=False
+				disabled=True
 			),
 			'result': widgets.Textarea(
 				value='',
 				placeholder='',
 				description='result',
-				disabled=False
+				disabled=True
 			),
 		}
 		for _, v in ds_widgets.items():
