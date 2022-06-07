@@ -153,22 +153,29 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 					torch.cuda.empty_cache()
 			return net, optimizer
 		except Exception as e:
-			log_text(f'[Exception occurred] epoch: {epoch}, {repr(e)}')
-			log_text(f'exc: {traceback.format_exc()}')
-			log_text(f'stack: {traceback.format_stack}')
-			log_text('load model and optim failed')
+			log_alert(f'[Exception occurred] epoch: {epoch}, {repr(e)}')
+			log_alert(f'exc: {traceback.format_exc()}')
+			log_alert(f'stack: {traceback.format_stack}')
+			log_alert('load model and optim failed')
 			raise e
 
 
-	def __print__(*msg):
-		if not cloud_notebook_service:
-			print(*msg)
-
-
-	def log_text(msg: str):
-		__print__(msg)
+	def log_alert(msg: str):
+		print(msg)
 		with open(os.path.join(save_dir, f'./{log_id}-alert.txt'), 'a+') as f:
 			f.write(f'{msg}\n')
+
+
+	def log_results(msg: str):
+		print(msg)
+		with open(os.path.join(save_dir, f'./{log_id}-results.txt'), 'a+') as f:
+			f.write(f'{msg}\n')
+
+
+	def clear():
+		if cloud_notebook_service:
+			from IPython import display
+			display.clear_output(wait=True)
 
 
 	def main_loop(epoch):
@@ -208,20 +215,21 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 							metrics[num_scales].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), 0)
 					else:
 						loss_alert = f'[NaN/Inf occurred] epoch: {epoch}, batch: {i}, coord_loss: {float(coord_loss.sum())}, class_loss: {float(class_loss.sum())}, no_obj_loss: {float(no_obj_loss.sum())}, obj_loss: {float(obj_loss.sum())}, prior_loss: {float(prior_loss.sum())}'
-						log_text(loss_alert)
+						log_alert(loss_alert)
 						if skip_nan_inf:
 							metrics[num_scales].add(0, 0, 0, 0, 0, 0, -X.shape[0])
 						else:
 							raise Exception(loss_alert)
 
 					# log train loss
-					__print__(f'epoch {epoch} batch {i + 1}/{num_batches} scale {G.get("scale")[j]} loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
+					print(f'epoch {epoch} batch {i + 1}/{num_batches} scale {G.get("scale")[j]} loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
 					if plot_indices > 0:
 						log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, j, train=True)
 
 				# log total scale loss
 				metrics[num_scales].add(0, 0, 0, 0, 0, 0, X.shape[0])
-				__print__(f'epoch {epoch} batch {i + 1}/{num_batches} total loss: {metrics[num_scales][5] / metrics[num_scales][6]}, S: {G.get("S")}, B: {G.get("B")}')
+				print(f'epoch {epoch} batch {i + 1}/{num_batches} total loss: {metrics[num_scales][5] / metrics[num_scales][6]}, S: {G.get("S")}, B: {G.get("B")}')
+				clear()
 				if plot_indices > 0:
 					log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, num_scales, train=True)
 
@@ -303,13 +311,14 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 
 					if (torch.isnan(loss_val.sum()) or torch.isinf(loss_val.sum())) and auto_restore:
 						loss_alert = f'[NaN/Inf occurred] epoch: {epoch}, batch: {i}, coord_loss: {float(coord_loss.sum())}, class_loss: {float(class_loss.sum())}, no_obj_loss: {float(no_obj_loss.sum())}, obj_loss: {float(obj_loss.sum())}, prior_loss: {float(prior_loss.sum())}'
-						log_text(loss_alert)
+						log_alert(loss_alert)
 						raise Exception(loss_alert)
 
 					metrics[j].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
 					metrics[num_scales].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), 0)
 
-					__print__(f'epoch {epoch} batch {i + 1}/{len(test_iter)} scale {G.get("scale")[j]} test loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
+					print(f'epoch {epoch} batch {i + 1}/{len(test_iter)} scale {G.get("scale")[j]} test loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
+					clear()
 				metrics[num_scales].add(0, 0, 0, 0, 0, 0, X.shape[0])
 
 			for j in range(num_scales + 1):
@@ -338,7 +347,7 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 					mAPVOC += calc.calculate_average_precision(metrics_utils.InterpolationMethod.Interpolation_11, prl=pr_data)
 				mAP5 /= G.get('num_classes')
 				mAPVOC /= G.get('num_classes')
-				print(f'epoch {epoch + 1} test mAP@.5: {mAP5}, VOCmAP: {mAPVOC}')
+				log_results(f'epoch {epoch + 1} test mAP@.5: {mAP5}, VOCmAP: {mAPVOC}')
 				writer.add_scalars(f'mAP/AP@.5-random-part', {log_id: mAP5}, epoch + 1)
 				writer.add_scalars(f'mAP/VOCmAP-random-part', {log_id: mAPVOC}, epoch + 1)
 
@@ -356,11 +365,11 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 		try:
 			main_loop(epoch)
 		except Exception as e:
-			log_text(f'[Exception occurred] epoch: {epoch}, {repr(e)}')
-			log_text(f'exc: {traceback.format_exc()}')
-			log_text(f'stack: {traceback.format_stack}')
+			log_alert(f'[Exception occurred] epoch: {epoch}, {repr(e)}')
+			log_alert(f'exc: {traceback.format_exc()}')
+			log_alert(f'stack: {traceback.format_stack}')
 			if auto_restore:
-				log_text(f'[auto restore] from {epoch} to {epoch - 1}')
+				log_alert(f'[auto restore] from {epoch} to {epoch - 1}')
 				epoch -= 1
 				net, optimizer = load_model_and_optim(epoch, net)
 				continue
