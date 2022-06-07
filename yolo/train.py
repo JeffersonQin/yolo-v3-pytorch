@@ -174,10 +174,33 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 			f.write(f'{msg}\n')
 
 
-	def clear():
+	if cloud_notebook_service:
+		import ipywidgets as widgets
+		from IPython.display import FileLink, display
+		ds_widgets = {
+			'status': widgets.Textarea(
+				value='',
+				placeholder='',
+				description='status',
+				disabled=False
+			),
+			'result': widgets.Textarea(
+				value='',
+				placeholder='',
+				description='result',
+				disabled=False
+			),
+		}
+		for _, v in ds_widgets.items():
+			display(v)
+		display(FileLink((os.path.join(model_dir, f'./{log_id}-alert.txt'))))
+		display(FileLink((os.path.join(model_dir, f'./{log_id}-results.txt'))))
+
+
+	def display_text(msg: str, tag: str):
 		if cloud_notebook_service:
-			from IPython import display
-			display.clear_output(wait=True)
+			ds_widgets[tag].value = msg
+		else: print(msg)
 
 
 	def main_loop(epoch):
@@ -201,6 +224,7 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 				yhat = net(X)
 				plot_indices = plot(i + 1, num_batches, visualize_cnt)
 				total_loss = 0
+				status_str = ''
 
 				for j, (y_single, yhat_single) in enumerate(zip(y, yhat)):
 					coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss = loss(yhat_single, y_single, epoch)
@@ -224,14 +248,15 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 							raise Exception(loss_alert)
 
 					# log train loss
-					print(f'epoch {epoch} batch {i + 1}/{num_batches} scale {G.get("scale")[j]} loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
+					status_str = status_str + f'epoch {epoch} batch {i + 1}/{num_batches} scale {G.get("scale")[j]} loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}\n'
 					if plot_indices > 0:
 						log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, j, train=True)
 
 				# log total scale loss
 				metrics[num_scales].add(0, 0, 0, 0, 0, 0, X.shape[0])
-				print(f'epoch {epoch} batch {i + 1}/{num_batches} total loss: {metrics[num_scales][5] / metrics[num_scales][6]}, S: {G.get("S")}, B: {G.get("B")}')
-				clear()
+				status_str = status_str + f'epoch {epoch} batch {i + 1}/{num_batches} total loss: {metrics[num_scales][5] / metrics[num_scales][6]}, S: {G.get("S")}, B: {G.get("B")}'
+				display_text(status_str, 'status')
+
 				if plot_indices > 0:
 					log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, num_scales, train=True)
 
@@ -288,6 +313,11 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 		# save optim
 		torch.save(optimizer.state_dict(), os.path.join(model_dir, f'./{log_id}-optim-{epoch}.pth'))
 
+		if cloud_notebook_service:
+			from IPython.display import FileLink, display
+			display(FileLink((os.path.join(model_dir, f'./{log_id}-model-{epoch}.pth'))))
+			display(FileLink((os.path.join(model_dir, f'./{log_id}-optim-{epoch}.pth'))))
+
 		# test!
 		G.set('S', output_scale_S)
 		net.eval()
@@ -301,6 +331,7 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 			for i, (X, y) in enumerate(test_iter):
 				X, y = X.to(devices[0]), [ys.to(devices[0]) for ys in y]
 				yhat = net(X)
+				status_str = ''
 
 				if i < len(test_iter) * test_pr_batch_ratio and epoch >= test_pr_after_epoch:
 					calc.add_data(yhat, y[0])
@@ -319,9 +350,9 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 					metrics[j].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
 					metrics[num_scales].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), 0)
 
-					print(f'epoch {epoch} batch {i + 1}/{len(test_iter)} scale {G.get("scale")[j]} test loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
-					clear()
+					status_str = status_str + f'epoch {epoch} batch {i + 1}/{len(test_iter)} scale {G.get("scale")[j]} test loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}\n'
 				metrics[num_scales].add(0, 0, 0, 0, 0, 0, X.shape[0])
+				display_text(status_str, 'status')
 
 			for j in range(num_scales + 1):
 				log_loss_tensorboard(metrics, epoch + 1, visualize_cnt, 0, j, train=False)
@@ -349,7 +380,9 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 					mAPVOC += calc.calculate_average_precision(metrics_utils.InterpolationMethod.Interpolation_11, prl=pr_data)
 				mAP5 /= G.get('num_classes')
 				mAPVOC /= G.get('num_classes')
-				log_results(f'epoch {epoch + 1} test mAP@.5: {mAP5}, VOCmAP: {mAPVOC}')
+				result_str = f'epoch {epoch + 1} test mAP@.5: {mAP5}, VOCmAP: {mAPVOC}'
+				log_results(result_str)
+				display_text(result_str, 'result')
 				writer.add_scalars(f'mAP/AP@.5-random-part', {log_id: mAP5}, epoch + 1)
 				writer.add_scalars(f'mAP/VOCmAP-random-part', {log_id: mAPVOC}, epoch + 1)
 
