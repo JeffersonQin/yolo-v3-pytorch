@@ -14,7 +14,7 @@ from utils import G
 from yolo.loss import YoloLoss
 
 
-def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lambda_scale: list[float], conf_thres: float, conf_ratio_thres: float, lr, get_optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0, test_pr_after_epoch: int=0, skip_nan_inf: bool=False, auto_restore: bool=True, cloud_notebook_service: bool=False):
+def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lambda_scale: list[float], conf_thres: float, conf_ratio_thres: float, lr, get_optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, model_dir: str='./model', log_dir: str='./logs', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0, test_pr_after_epoch: int=0, skip_nan_inf: bool=False, auto_restore: bool=True, cloud_notebook_service: bool=False):
 	"""trainer for yolo v2. 
 	Note: weight init is not done in this method, because the architecture
 	of yolo v2 is rather complicated with the design of pass through layer
@@ -38,7 +38,8 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 		mix_precision (bool, optional): whether to use mix_precision. Defaults to True.
 		grad_clip (bool, optional): whether to use gradient clipping. Defaults to True.
 		clip_max_norm (float, optional): max_norm when gradient clipping is used. Defaults to 5.0.
-		save_dir (str, optional): saving directory for model weights. Defaults to './model'.
+		model_dir (str, optional): saving directory for model weights. Defaults to './model'.
+		log_dir (str, optional): saving directory for tensorboard logs. Defaults to './logs'.
 		load_model (Optional[str], optional): path of model weights to load if exist. Defaults to None.
 		load_optim (Optional[str], optional): path of optimizer state_dict to load if exist. Defaults to None.
 		load_epoch (int, optional): done epoch count minus one when loading, should be the same with the number in auto-saved file name. Defaults to -1.
@@ -49,13 +50,13 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 		auto_restore (bool, optional): whether to restore model and optimizer state_dict after nan/inf or exception occurred. Defaults to True.
 		cloud_notebook_service (bool, optional): whether to using cloud notebook services such as Kaggle, Colab, etc. Defaults to False.
 	"""
-	os.makedirs(save_dir, exist_ok=True)
+	os.makedirs(model_dir, exist_ok=True)
 	net = get_net()
 	optimizer = get_optimizer(net)
 
 	# tensorboard
-	writer = tensorboard.SummaryWriter(f'logs/yolo')
-	pr_writer = tensorboard.SummaryWriter(f'logs/yolo/pr/{log_id}')
+	writer = tensorboard.SummaryWriter(os.path.join(log_dir, 'yolo'))
+	pr_writer = tensorboard.SummaryWriter(os.path.join(log_dir, f'yolo/pr/{log_id}'))
 
 	# set up loading
 	if load_model:
@@ -144,9 +145,9 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 			net = get_net()
 			optimizer = get_optimizer(net)
 			# load model and optim
-			net.load_state_dict(torch.load(os.path.join(save_dir, f'./{log_id}-model-{epoch}.pth')))
+			net.load_state_dict(torch.load(os.path.join(model_dir, f'./{log_id}-model-{epoch}.pth')))
 			net.to(devices[0])
-			optimizer.load_state_dict(torch.load(os.path.join(save_dir, f'./{log_id}-optim-{epoch}.pth')))
+			optimizer.load_state_dict(torch.load(os.path.join(model_dir, f'./{log_id}-optim-{epoch}.pth')))
 			# free memory
 			if torch.cuda.is_available():
 				for _ in range(10):
@@ -162,13 +163,13 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 
 	def log_alert(msg: str):
 		print(msg)
-		with open(os.path.join(save_dir, f'./{log_id}-alert.txt'), 'a+') as f:
+		with open(os.path.join(model_dir, f'./{log_id}-alert.txt'), 'a+') as f:
 			f.write(f'{msg}\n')
 
 
 	def log_results(msg: str):
 		print(msg)
-		with open(os.path.join(save_dir, f'./{log_id}-results.txt'), 'a+') as f:
+		with open(os.path.join(model_dir, f'./{log_id}-results.txt'), 'a+') as f:
 			f.write(f'{msg}\n')
 
 
@@ -282,9 +283,9 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 		writer.add_scalars(f'timing/{log_id}', {'train': timer.sum()}, epoch + 1)
 
 		# save model
-		torch.save(net.state_dict(), os.path.join(save_dir, f'./{log_id}-model-{epoch}.pth'))
+		torch.save(net.state_dict(), os.path.join(model_dir, f'./{log_id}-model-{epoch}.pth'))
 		# save optim
-		torch.save(optimizer.state_dict(), os.path.join(save_dir, f'./{log_id}-optim-{epoch}.pth'))
+		torch.save(optimizer.state_dict(), os.path.join(model_dir, f'./{log_id}-optim-{epoch}.pth'))
 
 		# test!
 		G.set('S', output_scale_S)
