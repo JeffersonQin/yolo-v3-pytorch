@@ -193,6 +193,8 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 		}
 		for _, v in ds_widgets.items():
 			display(v)
+		log_alert('')
+		log_results('')
 		display(FileLink((os.path.join(model_dir, f'./{log_id}-alert.txt'))))
 		display(FileLink((os.path.join(model_dir, f'./{log_id}-results.txt'))))
 
