@@ -14,7 +14,7 @@ from utils import G
 from yolo.loss import YoloLoss
 
 
-def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lambda_scale: list[float], conf_thres: float, conf_ratio_thres: float, lr, get_optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0, test_pr_after_epoch: int=0, skip_nan_inf: bool=False, auto_restore: bool=True):
+def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lambda_scale: list[float], conf_thres: float, conf_ratio_thres: float, lr, get_optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, save_dir: str='./model', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0, test_pr_after_epoch: int=0, skip_nan_inf: bool=False, auto_restore: bool=True, cloud_notebook_service: bool=False):
 	"""trainer for yolo v2. 
 	Note: weight init is not done in this method, because the architecture
 	of yolo v2 is rather complicated with the design of pass through layer
@@ -47,6 +47,7 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 		test_pr_after_epoch (int, optional): test average precision after number of epoch. Defaults to 0.
 		skip_nan_inf (bool, optional): whether to skip nan and inf in loss. Defaults to False.
 		auto_restore (bool, optional): whether to restore model and optimizer state_dict after nan/inf or exception occurred. Defaults to True.
+		cloud_notebook_service (bool, optional): whether to using cloud notebook services such as Kaggle, Colab, etc. Defaults to False.
 	"""
 	os.makedirs(save_dir, exist_ok=True)
 	net = get_net()
@@ -159,8 +160,13 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 			raise e
 
 
+	def __print__(*msg):
+		if not cloud_notebook_service:
+			print(*msg)
+
+
 	def log_text(msg: str):
-		print(msg)
+		__print__(msg)
 		with open(os.path.join(save_dir, f'./{log_id}-alert.txt'), 'a+') as f:
 			f.write(f'{msg}\n')
 
@@ -209,13 +215,13 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 							raise Exception(loss_alert)
 
 					# log train loss
-					print(f'epoch {epoch} batch {i + 1}/{num_batches} scale {G.get("scale")[j]} loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
+					__print__(f'epoch {epoch} batch {i + 1}/{num_batches} scale {G.get("scale")[j]} loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
 					if plot_indices > 0:
 						log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, j, train=True)
 
 				# log total scale loss
 				metrics[num_scales].add(0, 0, 0, 0, 0, 0, X.shape[0])
-				print(f'epoch {epoch} batch {i + 1}/{num_batches} total loss: {metrics[num_scales][5] / metrics[num_scales][6]}, S: {G.get("S")}, B: {G.get("B")}')
+				__print__(f'epoch {epoch} batch {i + 1}/{num_batches} total loss: {metrics[num_scales][5] / metrics[num_scales][6]}, S: {G.get("S")}, B: {G.get("B")}')
 				if plot_indices > 0:
 					log_loss_tensorboard(metrics, epoch, visualize_cnt, plot_indices, num_scales, train=True)
 
@@ -303,7 +309,7 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 					metrics[j].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), X.shape[0])
 					metrics[num_scales].add(coord_loss.sum(), class_loss.sum(), no_obj_loss.sum(), obj_loss.sum(), prior_loss.sum(), loss_val.sum(), 0)
 
-					print(f'epoch {epoch} batch {i + 1}/{len(test_iter)} scale {G.get("scale")[j]} test loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
+					__print__(f'epoch {epoch} batch {i + 1}/{len(test_iter)} scale {G.get("scale")[j]} test loss: {metrics[j][5] / metrics[j][6]}, S: {G.get("S")}, B: {G.get("B")}')
 				metrics[num_scales].add(0, 0, 0, 0, 0, 0, X.shape[0])
 
 			for j in range(num_scales + 1):
@@ -332,6 +338,7 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 					mAPVOC += calc.calculate_average_precision(metrics_utils.InterpolationMethod.Interpolation_11, prl=pr_data)
 				mAP5 /= G.get('num_classes')
 				mAPVOC /= G.get('num_classes')
+				print(f'epoch {epoch + 1} test mAP@.5: {mAP5}, VOCmAP: {mAPVOC}')
 				writer.add_scalars(f'mAP/AP@.5-random-part', {log_id: mAP5}, epoch + 1)
 				writer.add_scalars(f'mAP/VOCmAP-random-part', {log_id: mAPVOC}, epoch + 1)
 
