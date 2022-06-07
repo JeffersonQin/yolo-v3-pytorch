@@ -51,6 +51,7 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 		cloud_notebook_service (bool, optional): whether to using cloud notebook services such as Kaggle, Colab, etc. Defaults to False.
 	"""
 	os.makedirs(model_dir, exist_ok=True)
+	os.makedirs(log_dir, exist_ok=True)
 	net = get_net()
 	optimizer = get_optimizer(net)
 
