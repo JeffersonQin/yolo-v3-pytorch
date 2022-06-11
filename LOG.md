@@ -672,3 +672,89 @@
   | epoch | load_epoch | seed  |    reason    |
   | :---: | :--------: | :---: | :----------: |
   |   0   |     -1     |  28   | normal start |
+
+## resnet18-voc-no-scale-sgd [Colab / Kaggle]
+
+* 日期：2022/6/7
+* 实验目的及方法：
+  * 对 `resnet18-voc-zqy-seed-sgd` 进行修改
+  * 去掉 `lambda-scale` 的特性，看看和 `resnet18-voc-zqy-seed-sgd` 有什么区别，用于判断 `lambda_scale` 的作用。
+  * 使用 Colab，所以 `batch_size=64`
+* 改进
+  * 调参
+* 效果
+  * EARLY STOP @ epoch 120
+  * max AP@.5 44.19% @ epoch 118
+  * max VOCmAP 44.97% @ epoch 118
+  * 就算以线性速度增长也不会有很好的结果，故早停
+* 结论
+  * 在高学习率下，`lambda_scale` 是有效果的，可以帮助模型快速收敛
+* 调参建议
+  * 略
+* <details>
+  <summary>参数</summary>
+  <pre>
+  # define hyper parameters
+  # batch & gradient accumulation
+  batch_size_train = 64
+  batch_size_test = 64
+  accum_batch_num = 1
+  # epoch
+  num_epoch = 160
+  multi_scale_epoch = 150
+  output_scale_S = 13
+  # optimizer
+  weight_decay = 0.0005
+  momentum = 0.9
+  # mix precision
+  mix_precision = True
+  # gradient clipping
+  clip_max_norm = 20.0
+  # lambda scale
+  lambda_scale_1 = 1
+  lambda_scale_2 = 1
+  lambda_scale_4 = 1
+  # loss
+  lambda_coord = 10.0
+  lambda_noobj = 1.0
+  lambda_obj = 50.0
+  lambda_class = 10.0
+  lambda_prior = 0.1
+  epoch_prior = 60
+  IoU_thres = 0.7
+  scale_coord = True
+  eps = 1e-6
+  no_obj_v3 = True
+  # learning rate scheduler
+  lr_linear_max = 0.5
+  lr_warmup_epoch = 30
+  lr_cosine_max_1 = 0.5
+  lr_T_half_1 = 130
+  # lr_cosine_max_2 = 0.5
+  # lr_T_half_2 = 50
+  # lr_cosine_max_3 = 0.25
+  # lr_T_half_3 = 60
+  # conf thres
+  conf_thres = 0.01
+  conf_ratio_thres = 0.05
+  # test strategy
+  test_pr_after_epoch = 10
+  test_pr_batch_ratio = 1.0
+  </pre>
+  </detail>
+* 显著参数变化
+  ```python
+  lambda_scale_1 = 1
+  lambda_scale_2 = 1
+  lambda_scale_4 = 1
+  lambda_obj = 50.0
+  lr_linear_max = 0.5
+  lr_cosine_max_1 = 0.5
+  ```
+* 流程
+  | epoch | load_epoch | seed  |      reason      |
+  | :---: | :--------: | :---: | :--------------: |
+  |   0   |     -1     |  28   |   normal start   |
+  |  35   |     34     |  31   | colab disconnect |
+  |  68   |     67     |  29   | colab disconnect |
+  |  97   |     96     |  33   | colab disconnect |
