@@ -80,6 +80,40 @@ def transform_auto_padding(img: torch.Tensor, bbox: torch.Tensor) -> Tuple[torch
 	return img, bbox
 
 
+def transform_random_padding(img: torch.Tensor, bbox: torch.Tensor, f: float) -> Tuple[torch.Tensor, torch.Tensor]:
+	"""transformation: random padding to square for augmentation
+
+	Args:
+		img (torch.Tensor): image tensor
+		bbox (torch.Tensor): [N, 5] absolute bbox tensor: [x1, y1, x2, y2, category], category starts from zero
+		f (float): maximum factor of padding, f >= 0.0
+
+	Returns:
+		Tuple[torch.Tensor, torch.Tensor]: return image and transformed bbox
+	"""
+	height = img.shape[1]
+	width = img.shape[2]
+
+	# use random value to decide scaling factor on x and y axis
+	random_height = random.random() * f * height
+	random_width = random.random() * f * width
+	# use random value again to decide scaling factor for 4 borders
+	random_top = random.random() * random_height
+	random_left = random.random() * random_width
+	random_bottom = random_height - random_top
+	random_right = random_width - random_left
+
+	# apply padding
+	img = torchvision.transforms.functional.pad(img, (random_left, random_top, random_right, random_bottom))
+	# transform bbox
+	bbox[:, 0] = bbox[:, 0] + random_left
+	bbox[:, 1] = bbox[:, 1] + random_top
+	bbox[:, 2] = bbox[:, 2] + random_left
+	bbox[:, 3] = bbox[:, 3] + random_top
+
+	return img, bbox
+
+
 def transform_to_relative(img: torch.Tensor, bbox: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 	"""transformation: transform bbox coordinates from absolute to relative
 
@@ -216,6 +250,10 @@ class YOLODataset(data.Dataset):
 		# randomly adjust brightness, contrast, saturation, hue
 		if random.random() < self.train:
 			img = color_jitter(img)
+
+		# randomly adjust padding up to 20%
+		if random.random() < self.train:
+			img, bbox = transform_random_padding(img, bbox, 0.2)
 
 		img, bbox = transform_auto_padding(img, bbox) # fix ratio
 		img, bbox = transform_to_relative(img, bbox)
