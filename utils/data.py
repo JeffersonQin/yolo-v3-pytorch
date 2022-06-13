@@ -49,6 +49,37 @@ def transform_crop(img: torch.Tensor, bbox: torch.Tensor, f: float) -> Tuple[tor
 	return img, bbox
 
 
+def transform_auto_padding(img: torch.Tensor, bbox: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+	"""transformation: auto padding to square
+
+	Args:
+		img (torch.Tensor): image tensor
+		bbox (torch.Tensor): [N, 5] absolute bbox tensor: [x1, y1, x2, y2, category], category starts from zero
+
+	Returns:
+		Tuple[torch.Tensor, torch.Tensor]: return image and transformed bbox
+	"""
+	height = img.shape[1]
+	width = img.shape[2]
+
+	if height > width:
+		left = int((height - width) / 2)
+		top = 0
+	else:
+		left = 0
+		top = int((width - height) / 2)
+
+	# fill padding
+	img = torchvision.transforms.functional.pad(img, (left, top))
+	# transform bbox
+	bbox[:, 0] = bbox[:, 0] + left
+	bbox[:, 1] = bbox[:, 1] + top
+	bbox[:, 2] = bbox[:, 2] + left
+	bbox[:, 3] = bbox[:, 3] + top
+
+	return img, bbox
+
+
 def transform_to_relative(img: torch.Tensor, bbox: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 	"""transformation: transform bbox coordinates from absolute to relative
 
@@ -186,6 +217,7 @@ class YOLODataset(data.Dataset):
 		if random.random() < self.train:
 			img = color_jitter(img)
 
+		img, bbox = transform_auto_padding(img, bbox) # fix ratio
 		img, bbox = transform_to_relative(img, bbox)
 		img = torchvision.transforms.functional.resize(img, (S * 32, S * 32))
 
