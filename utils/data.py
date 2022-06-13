@@ -10,7 +10,7 @@ from . import globalvar as G
 
 voc_categories = [ 'aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus', 'car', 'cat', 'chair', 'cow', 'diningtable', 'dog', 'horse', 'motorbike', 'person', 'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor', ]
 coco_category_index = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 70, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 84, 85, 86, 87, 88, 89, 90]
-
+color_jitter = torchvision.transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.05)
 
 def transform_crop(img: torch.Tensor, bbox: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 	"""transformation: image cropping
@@ -180,10 +180,10 @@ class YOLODataset(data.Dataset):
 		if random.random() < self.train:
 			img, bbox = transform_crop(img, bbox)
 
-		# adjust saturation randomly up to 150%
+		# color jitter
+		# randomly adjust brightness, contrast, saturation, hue
 		if random.random() < self.train:
-			random_saturation = random.random() + 0.5
-			img = torchvision.transforms.functional.adjust_saturation(img, random_saturation)
+			img = color_jitter(img)
 
 		img, bbox = transform_to_relative(img, bbox)
 		img = torchvision.transforms.functional.resize(img, (S * 32, S * 32))
