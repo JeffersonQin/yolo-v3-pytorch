@@ -12,12 +12,13 @@ voc_categories = [ 'aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus', 'car
 coco_category_index = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 70, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 84, 85, 86, 87, 88, 89, 90]
 color_jitter = torchvision.transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.05)
 
-def transform_crop(img: torch.Tensor, bbox: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def transform_crop(img: torch.Tensor, bbox: torch.Tensor, f: float) -> Tuple[torch.Tensor, torch.Tensor]:
 	"""transformation: image cropping
 
 	Args:
 		img (torch.Tensor): image tensor
 		bbox (torch.Tensor): [N, 5] absolute bbox tensor: [x1, y1, x2, y2, category], category starts from zero
+		f (float): maximum factor of cropping off, 0.0 <= f < 1.0
 
 	Returns:
 		Tuple[torch.Tensor, torch.Tensor]: return transformed image and bbox
@@ -27,8 +28,8 @@ def transform_crop(img: torch.Tensor, bbox: torch.Tensor) -> Tuple[torch.Tensor,
 	N = bbox.shape[0]
 
 	# use random value to decide scaling factor on x and y axis
-	random_height = random.random() * 0.2
-	random_width = random.random() * 0.2
+	random_height = random.random() * f
+	random_width = random.random() * f
 	# use random value again to decide scaling factor for 4 borders
 	random_top = random.random() * random_height
 	random_left = random.random() * random_width
@@ -178,7 +179,7 @@ class YOLODataset(data.Dataset):
 		# Image Augmentation
 		# randomly scaling and translation up to 20%
 		if random.random() < self.train:
-			img, bbox = transform_crop(img, bbox)
+			img, bbox = transform_crop(img, bbox, 0.2)
 
 		# color jitter
 		# randomly adjust brightness, contrast, saturation, hue
