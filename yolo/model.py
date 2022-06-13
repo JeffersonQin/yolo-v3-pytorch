@@ -111,8 +111,8 @@ class ResNetYolo(nn.Module):
 
 
 class ResNet18YoloDetector(ResNetYolo):
-	def __init__(self):
-		super(ResNet18YoloDetector, self).__init__(torchvision.models.resnet18(pretrained=True))
+	def __init__(self, pretrain=True):
+		super(ResNet18YoloDetector, self).__init__(torchvision.models.resnet18(pretrained=pretrain))
 
 
 	def forward(self, X):
@@ -120,8 +120,8 @@ class ResNet18YoloDetector(ResNetYolo):
 
 
 class ResNet34YoloDetector(ResNetYolo):
-	def __init__(self):
-		super(ResNet34YoloDetector, self).__init__(torchvision.models.resnet34(pretrained=True))
+	def __init__(self, pretrain=True):
+		super(ResNet34YoloDetector, self).__init__(torchvision.models.resnet34(pretrained=pretrain))
 
 
 	def forward(self, X):
@@ -129,8 +129,8 @@ class ResNet34YoloDetector(ResNetYolo):
 
 
 class ResNet50YoloDetector(ResNetYolo):
-	def __init__(self):
-		super(ResNet50YoloDetector, self).__init__(torchvision.models.resnet50(pretrained=True))
+	def __init__(self, pretrain=True):
+		super(ResNet50YoloDetector, self).__init__(torchvision.models.resnet50(pretrained=pretrain))
 
 
 	def forward(self, X):
@@ -138,8 +138,8 @@ class ResNet50YoloDetector(ResNetYolo):
 
 
 class ResNet101YoloDetector(ResNetYolo):
-	def __init__(self):
-		super(ResNet101YoloDetector, self).__init__(torchvision.models.resnet101(pretrained=True))
+	def __init__(self, pretrain=True):
+		super(ResNet101YoloDetector, self).__init__(torchvision.models.resnet101(pretrained=pretrain))
 
 
 	def forward(self, X):
@@ -147,8 +147,8 @@ class ResNet101YoloDetector(ResNetYolo):
 
 
 class ResNet152YoloDetector(ResNetYolo):
-	def __init__(self):
-		super(ResNet152YoloDetector, self).__init__(torchvision.models.resnet152(pretrained=True))
+	def __init__(self, pretrain=True):
+		super(ResNet152YoloDetector, self).__init__(torchvision.models.resnet152(pretrained=pretrain))
 
 
 	def forward(self, X):
