@@ -758,3 +758,86 @@
   |  35   |     34     |  31   | colab disconnect |
   |  68   |     67     |  29   | colab disconnect |
   |  97   |     96     |  33   | colab disconnect |
+
+## resnet18-voc-renaissance-lr-1.5-sgd
+
+* 日期：2022/6/10 16:30
+* 实验目的及方法：
+  * 对 `resnet18-voc-renaissance-sgd` 拉高学习率和 epoch
+* 改进
+  * 调参
+* 效果
+  * max AP@.5 58.467% @ epoch 143, + 6.217% [baseline], + 2.987% [renaissance]
+  * max VOCmAP 57.943% @ epoch 143, + 5.783% [baseline], + 2.933% [renaissance], [==YOLOv1==]
+* 结论
+  * 确实有提高，但是不是最显著
+  * 光靠调参可能已经走到极限了
+  * 但不知道为什么就是无法超越那次神奇的 `cosine-obj` ...
+  * 下一步调 data augmentation
+* <details>
+  <summary>参数</summary>
+  <pre>
+  # define hyper parameters
+  # batch & gradient accumulation
+  batch_size_train = 32
+  batch_size_test = 64
+  accum_batch_num = 2
+  # epoch
+  num_epoch = 200
+  multi_scale_epoch = 190
+  output_scale_S = 13
+  # optimizer
+  weight_decay = 0.0005
+  momentum = 0.9
+  # mix precision
+  mix_precision = True
+  # gradient clipping
+  clip_max_norm = 20.0
+  # lambda scale
+  lambda_scale_1 = 1
+  lambda_scale_2 = 1
+  lambda_scale_4 = 1
+  # loss
+  lambda_coord = 10.0
+  lambda_noobj = 1.0
+  lambda_obj = 20.0
+  lambda_class = 10.0
+  lambda_prior = 0.1
+  epoch_prior = 60
+  IoU_thres = 0.7
+  scale_coord = True
+  eps = 1e-6
+  no_obj_v3 = True
+  # learning rate scheduler
+  lr_linear_max = 0.15
+  lr_warmup_epoch = 30
+  lr_cosine_max_1 = 0.15
+  lr_T_half_1 = 170
+  # lr_cosine_max_2 = 0.5
+  # lr_T_half_2 = 50
+  # lr_cosine_max_3 = 0.25
+  # lr_T_half_3 = 60
+  # conf thres
+  conf_thres = 0.01
+  conf_ratio_thres = 0.05
+  # test strategy
+  test_pr_after_epoch = 10
+  test_pr_batch_ratio = 1.0
+  </pre>
+  </details>
+* 显著参数变化：
+  ```python
+  lambda_scale_1 = 1
+  lambda_scale_2 = 1
+  lambda_scale_4 = 1
+  lambda_obj = 20.0
+  lr_linear_max = 0.15
+  lr_cosine_max_1 = 0.15
+  lr_T_half_1 = 170
+  ```
+* 流程
+  | epoch | load_epoch | seed  |    reason    |
+  | :---: | :--------: | :---: | :----------: |
+  |   0   |     -1     |  28   | normal start |
+  |  31   |     30     |  31   |   CPU OOM    |
+  |  126  |    125     |  29   |   CPU OOM    |
