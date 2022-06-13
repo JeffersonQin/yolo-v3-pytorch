@@ -126,12 +126,12 @@ def transform_to_yolo(bbox: torch.Tensor, sf: int) -> torch.Tensor:
 class YOLODataset(data.Dataset):
 	"""YOLO Dataset (base class)"""
 
-	def __init__(self, dataset: data.Dataset, train=True):
+	def __init__(self, dataset: data.Dataset, train: float=0.5):
 		"""YOLO Dataset Initialization
 
 		Args:
 			dataset (data.Dataset): dataset
-			train (bool, optional): whether is used for training. Defaults to True.
+			train (float, optional): random ratio for data augmentation. Defaults to 0.5.
 		"""
 		self.dataset = dataset
 		self.train = train
@@ -176,15 +176,14 @@ class YOLODataset(data.Dataset):
 		img, bbox = self.transform(img, bbox)
 
 		# Image Augmentation
-		if self.train:
-			# randomly scaling and translation up to 20%
-			if random.random() < 0.5:
-				img, bbox = transform_crop(img, bbox)
+		# randomly scaling and translation up to 20%
+		if random.random() < self.train:
+			img, bbox = transform_crop(img, bbox)
 
-			# adjust saturation randomly up to 150%
-			if random.random() < 0.5:
-				random_saturation = random.random() + 0.5
-				img = torchvision.transforms.functional.adjust_saturation(img, random_saturation)
+		# adjust saturation randomly up to 150%
+		if random.random() < self.train:
+			random_saturation = random.random() + 0.5
+			img = torchvision.transforms.functional.adjust_saturation(img, random_saturation)
 
 		img, bbox = transform_to_relative(img, bbox)
 		img = torchvision.transforms.functional.resize(img, (S * 32, S * 32))
@@ -249,7 +248,7 @@ class COCODataset(YOLODataset):
 		return img, bbox
 
 
-def load_data_voc(batch_size_train: int, batch_size_test: int, num_workers=0, persistent_workers=False, download=False, train_shuffle=True, test_shuffule=False, pin_memory=True, data_augmentation=True) -> list[data.DataLoader]:
+def load_data_voc(batch_size_train: int, batch_size_test: int, num_workers=0, persistent_workers=False, download=False, train_shuffle=True, test_shuffule=False, pin_memory=True, data_augmentation=0.5) -> list[data.DataLoader]:
 	"""Load Pascal VOC dataset, consist of VOC2007trainval+test+VOC2012train, VOC2012val
 
 	Args:
@@ -261,7 +260,7 @@ def load_data_voc(batch_size_train: int, batch_size_test: int, num_workers=0, pe
 		train_shuffle (bool, optional): whether to shuffle train data. Defaults to True.
 		test_shuffule (bool, optional): whether to shuffle test data. Defaults to False.
 		pin_memory (bool, optional): whether to pin memory. Defaults to True.
-		data_augmentaion (bool, optional): whether to augment train data. Default to True.
+		data_augmentation (float, optional): random ratio for data augmentation. Defaults to 0.5.
 
 	Returns:
 		list[data.DataLoader]: train_iter, test_iter
@@ -280,13 +279,13 @@ def load_data_voc(batch_size_train: int, batch_size_test: int, num_workers=0, pe
 			batch_size=batch_size_train, shuffle=train_shuffle, num_workers=num_workers, 
 			persistent_workers=persistent_workers, pin_memory=pin_memory),
 		data.DataLoader(
-			VOCDataset(voc2012_val, train=False),
+			VOCDataset(voc2012_val, train=0),
 			batch_size=batch_size_test, shuffle=test_shuffule, num_workers=num_workers, 
 			persistent_workers=persistent_workers, pin_memory=pin_memory)
 	)
 
 
-def load_data_coco(batch_size_train: int, batch_size_test: int, num_workers=0, persistent_workers=False, train_shuffle=True, test_shuffule=False, pin_memory=True, data_augmentation=True) -> list[data.DataLoader]:
+def load_data_coco(batch_size_train: int, batch_size_test: int, num_workers=0, persistent_workers=False, train_shuffle=True, test_shuffule=False, pin_memory=True, data_augmentation=0.5) -> list[data.DataLoader]:
 	"""Load MSCOCO Detection dataset, consist of COCO2017train(trainval35k) and COCO2017val
 
 	Args:
@@ -298,7 +297,7 @@ def load_data_coco(batch_size_train: int, batch_size_test: int, num_workers=0, p
 		train_shuffle (bool, optional): whether to shuffle train data. Defaults to True.
 		test_shuffule (bool, optional): whether to shuffle test data. Defaults to False.
 		pin_memory (bool, optional): whether to pin memory. Defaults to True.
-		data_augmentaion (bool, optional): whether to augment train data. Default to True.
+		data_augmentation (float, optional): random ratio for data augmentation. Defaults to 0.5.
 
 	Returns:
 		list[data.DataLoader]: train_iter, test_iter
@@ -319,7 +318,7 @@ def load_data_coco(batch_size_train: int, batch_size_test: int, num_workers=0, p
 		data.DataLoader(COCODataset(coco2017_train, train=data_augmentation),
 			batch_size=batch_size_train, shuffle=train_shuffle, num_workers=num_workers, 
 			persistent_workers=persistent_workers, pin_memory=pin_memory),
-		data.DataLoader(COCODataset(coco2017_val, train=False), 
+		data.DataLoader(COCODataset(coco2017_val, train=0), 
 			batch_size=batch_size_test, shuffle=test_shuffule, num_workers=num_workers, 
 			persistent_workers=persistent_workers, pin_memory=pin_memory)
 	)
