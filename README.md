@@ -20,7 +20,22 @@
 - [x] Gradient Clipping
 - [x] Model Auto Restoration
 - [ ] Focal Loss (RetinaNet)
-- [ ] Mosaic Data Augmentation
+- [x] Ratio Fixing by Padding
+- Data Augmentation
+  - [x] Random Crop
+  - [x] Color Jitter (Brightness, Contrast, Saturation, Hue)
+  - [x] Random Padding
+  - [ ] Random Gaussian Blur
+  - [ ] Random Noise
+  - [ ] Random Affine Transformation
+  - [ ] Random Perspective Transformation
+  - [ ] Random Horizontal Flip
+  - [ ] Mosaic
+  - [ ] Mix Up
 - [ ] Label Smoothing
-- [ ] GIoU, DIoU, CIoU
-- [ ] Random Affining, Random Horizontal Flip
+- Bounding Box Loss
+  - [x] MSE
+  - [ ] IoU
+  - [ ] DIoU
+  - [ ] CIoU
+  - [ ] GIoU
