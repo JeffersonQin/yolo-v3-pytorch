@@ -25,13 +25,15 @@
   - [x] Random Crop
   - [x] Color Jitter (Brightness, Contrast, Saturation, Hue)
   - [x] Random Padding
-  - [ ] Random Gaussian Blur
-  - [ ] Random Noise
+  - [x] Random Gaussian Blur
+  - [x] Random Noise
+  - [ ] Random Rotate
   - [ ] Random Affine Transformation
   - [ ] Random Perspective Transformation
-  - [ ] Random Horizontal Flip
+  - [x] Random Horizontal Flip
   - [ ] Mosaic
   - [ ] Mix Up
+  - [ ] Cut Mix
 - [ ] Label Smoothing
 - Bounding Box Loss
   - [x] MSE
