@@ -283,6 +283,15 @@ class YOLODataset(data.Dataset):
 		img, bbox = transform_to_relative(img, bbox)
 		img = torchvision.transforms.functional.resize(img, (S * 32, S * 32))
 
+		# random noise
+		if random.random() < self.train:
+			img = img + torch.randn(img.size()) * 0.05
+
+		# random gaussion blur
+		if random.random() < self.train:
+			img = torchvision.transforms.functional.gaussian_blur(img, 
+				kernel_size=(random.randint(1, 3) * 2 - 1, random.randint(1, 3) * 2 - 1))
+
 		labels = [transform_to_yolo(bbox, scale * S) for scale in G.get('scale')]
 		return img, labels
 
