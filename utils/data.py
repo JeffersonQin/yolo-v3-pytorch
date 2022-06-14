@@ -190,6 +190,8 @@ def transform_to_yolo(bbox: torch.Tensor, sf: int) -> torch.Tensor:
 		w = x2 - x1
 		h = y2 - y1
 
+		if w < 0 or h < 0: continue
+
 		xidx = math.floor(x * sf)
 		yidx = math.floor(y * sf)
 
