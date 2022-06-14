@@ -98,10 +98,10 @@ def transform_random_padding(img: torch.Tensor, bbox: torch.Tensor, f: float) ->
 	random_height = random.random() * f * height
 	random_width = random.random() * f * width
 	# use random value again to decide scaling factor for 4 borders
-	random_top = random.random() * random_height
-	random_left = random.random() * random_width
-	random_bottom = random_height - random_top
-	random_right = random_width - random_left
+	random_top = int(random.random() * random_height)
+	random_left = int(random.random() * random_width)
+	random_bottom = int(random_height - random_top)
+	random_right = int(random_width - random_left)
 
 	# apply padding
 	img = torchvision.transforms.functional.pad(img, (random_left, random_top, random_right, random_bottom))
