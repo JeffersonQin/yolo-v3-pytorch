@@ -114,6 +114,26 @@ def transform_random_padding(img: torch.Tensor, bbox: torch.Tensor, f: float) ->
 	return img, bbox
 
 
+def transform_horizontal_flip(img: torch.Tensor, bbox: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+	"""transformation: horizontal flip
+
+	Args:
+		img (torch.Tensor): image tensor
+		bbox (torch.Tensor): [N, 5] absolute bbox tensor: [x1, y1, x2, y2, category], category starts from zero
+
+	Returns:
+		Tuple[torch.Tensor, torch.Tensor]: return image and transformed bbox
+	"""
+	width = img.shape[2]
+
+	img = torchvision.transforms.functional.hflip(img)
+	bbox_width = bbox[:, 2] - bbox[:, 0]
+	bbox[:, 0] = width - bbox_width - bbox[:, 0]
+	bbox[:, 2] = bbox[:, 0] + bbox_width
+
+	return img, bbox
+
+
 def transform_to_relative(img: torch.Tensor, bbox: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 	"""transformation: transform bbox coordinates from absolute to relative
 
@@ -254,6 +274,10 @@ class YOLODataset(data.Dataset):
 		# randomly adjust padding up to 20%
 		if random.random() < self.train:
 			img, bbox = transform_random_padding(img, bbox, 0.2)
+
+		# random horizontal flip
+		if random.random() < self.train:
+			img, bbox = transform_horizontal_flip(img, bbox)
 
 		img, bbox = transform_auto_padding(img, bbox) # fix ratio
 		img, bbox = transform_to_relative(img, bbox)
