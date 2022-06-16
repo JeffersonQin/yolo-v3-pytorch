@@ -51,6 +51,12 @@ class LearningRateScheduler:
 		return self.lr_scheduler(epoch)
 
 
+class ConstantScheduler(LearningRateScheduler):
+	def __init__(self, c, max_epoch):
+		def lr(_): return c
+		super().__init__(lr, max_epoch)
+
+
 class LinearWarmupScheduler(LearningRateScheduler):
 	def __init__(self, linear_max, max_epoch):
 		def lr(epoch):
