@@ -937,8 +937,8 @@
 * 改进
   * 数据增广
 * 效果
-  * max AP@.5 59.16% @ epoch 180, + 6.91% [baseline], + 3.68 [renaissance]
-  * max VOCmAP 58.59% @ epoch 198, + 6.43% [baseline], + 3.58 [renaissance]
+  * max AP@.5 59.16% @ epoch 180, + 6.91% [baseline], + 3.68% [renaissance]
+  * max VOCmAP 58.59% @ epoch 198, + 6.43% [baseline], + 3.58% [renaissance]
 * 结论
   * 确实提高了，但是仍然不显著，这次半个点都不到
   * 感觉肯定是哪里出了问题，没有察觉到的地方
