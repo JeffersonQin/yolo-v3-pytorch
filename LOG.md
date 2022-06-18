@@ -1007,3 +1007,160 @@
   |   0   |     -1     |  28   | normal start |
   |  66   |     65     |  31   |     OOM      |
   |  98   |     97     |  29   |     OOS      |
+
+## resnet18-voc-primary-aug-lr15-sgd [Colab / Kaggle]
+
+* 日期：2022/6/15
+* 实验目的及方法
+  * 对 `resnet18-voc-random-0.8-sgd` 进一步增强图像增广
+* 改进
+  * 数据增广
+  * 增加：`RandomNoise`, `RandomGaussionBlur`, `FixRatio`, `RandomPadding`, `ColorJitter`
+* 效果
+  * max AP@.5 60.61% @ epoch 166, + 8.36% [baseline], + 5.13% [renaissance]
+  * max VOCmAP 60.07% @ epoch 166, + 7.91% [baseline], + 5.06% [renaissance]
+* 结论
+  * 这个增广还是很有效果的，提高了一点五个点，涨幅喜人
+* 调参建议
+  * 无计可施
+* <details>
+  <summary>参数</summary>
+  <pre>
+  # define hyper parameters
+  # batch & gradient accumulation
+  batch_size_train = 64
+  batch_size_test = 64
+  accum_batch_num = 1
+  # epoch
+  num_epoch = 200
+  multi_scale_epoch = 190
+  output_scale_S = 13
+  # optimizer
+  weight_decay = 0.0005
+  momentum = 0.9
+  # mix precision
+  mix_precision = True
+  # gradient clipping
+  clip_max_norm = 20.0
+  # lambda scale
+  lambda_scale_1 = 1
+  lambda_scale_2 = 1
+  lambda_scale_4 = 1
+  # loss
+  lambda_coord = 10.0
+  lambda_noobj = 1.0
+  lambda_obj = 10.0
+  lambda_class = 10.0
+  lambda_prior = 0.1
+  epoch_prior = 60
+  IoU_thres = 0.7
+  scale_coord = True
+  eps = 1e-6
+  no_obj_v3 = True
+  # learning rate scheduler
+  lr_linear_max = 0.15
+  lr_warmup_epoch = 30
+  lr_cosine_max_1 = 0.15
+  lr_T_half_1 = 170
+  # lr_cosine_max_2 = 0.5
+  # lr_T_half_2 = 50
+  # lr_cosine_max_3 = 0.25
+  # lr_T_half_3 = 60
+  # conf thres
+  conf_thres = 0.01
+  conf_ratio_thres = 0.05
+  # data augmentation
+  random_ratio = 0.5
+  # test strategy
+  test_pr_after_epoch = 10
+  test_pr_batch_ratio = 1.0
+  </pre>
+  </details>
+* 显著参数变化：无
+* 流程
+  | epoch | load_epoch | seed  |    reason    |
+  | :---: | :--------: | :---: | :----------: |
+  |   0   |     -1     |  28   | normal start |
+  |  39   |     40     |  31   | kaggle stop  |
+  |  77   |     78     |  29   | kaggle stop  |
+  |  110  |    111     |  33   | kaggle stop  |
+  |  148  |    149     |  30   | kaggle stop  |
+  |  186  |    187     |  32   | kaggle stop  |
+
+## resnet18-voc-primary-aug-lr18-sgd
+
+* 日期：2022/6/15
+* 实验目的及方法
+  * 提高 `resnet18-voc-primary-aug-lr15-sgd` 的学习率到 0.18，因为猜测做了数据增广可能拉学习率会有效果
+* 改进
+  * 调参
+* 效果
+  * max AP@.5 59.31 @ epoch 186, + 7.06% [baseline], + 3.83% [renaissance]
+  * max VOCmAP 58.77% @ epoch 186, + 6.61% [baseline], + 3.76% [renaissance]
+* 结论
+  * 没用，下一个
+* 调参建议
+  * 抄
+* <details>
+  <summary>参数</summary>
+  <pre>
+  # define hyper parameters
+  # batch & gradient accumulation
+  batch_size_train = 32
+  batch_size_test = 64
+  accum_batch_num = 2
+  # epoch
+  num_epoch = 200
+  multi_scale_epoch = 190
+  output_scale_S = 13
+  # optimizer
+  weight_decay = 0.0005
+  momentum = 0.9
+  # mix precision
+  mix_precision = True
+  # gradient clipping
+  clip_max_norm = 20.0
+  # lambda scale
+  lambda_scale_1 = 1
+  lambda_scale_2 = 1
+  lambda_scale_4 = 1
+  # loss
+  lambda_coord = 10.0
+  lambda_noobj = 1.0
+  lambda_obj = 10.0
+  lambda_class = 10.0
+  lambda_prior = 0.1
+  epoch_prior = 60
+  IoU_thres = 0.7
+  scale_coord = True
+  eps = 1e-6
+  no_obj_v3 = True
+  # learning rate scheduler
+  lr_linear_max = 0.18
+  lr_warmup_epoch = 30
+  lr_cosine_max_1 = 0.18
+  lr_T_half_1 = 170
+  # lr_cosine_max_2 = 0.5
+  # lr_T_half_2 = 50
+  # lr_cosine_max_3 = 0.25
+  # lr_T_half_3 = 60
+  # conf thres
+  conf_thres = 0.01
+  conf_ratio_thres = 0.05
+  # data augmentation
+  random_ratio = 0.5
+  # test strategy
+  test_pr_after_epoch = 10
+  test_pr_batch_ratio = 1.0
+  </pre>
+  </details>
+* 显著参数变化：
+  ```python
+  lr_linear_max = 0.18
+  lr_cosine_max_1 = 0.18
+  ```
+* 流程
+  | epoch | load_epoch | seed  |    reason    |
+  | :---: | :--------: | :---: | :----------: |
+  |   0   |     -1     |  31   | normal start |
+  |  185  |    184     |  29   |  CUDA ERROR  |
