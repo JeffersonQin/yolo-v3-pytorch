@@ -14,7 +14,7 @@ from utils import G
 from yolo.loss import YoloLoss
 
 
-def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, multi_scale_epoch: int, output_scale_S: int, lambda_scale: list[float], conf_thres: float, conf_ratio_thres: float, lr, get_optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, model_dir: str='./model', log_dir: str='./logs', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0, test_pr_after_epoch: int=0, skip_nan_inf: bool=False, auto_restore: bool=True, cloud_notebook_service: bool=False):
+def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: int, freeze_epoch: int, multi_scale_epoch: int, output_scale_S: int, lambda_scale: list[float], conf_thres: float, conf_ratio_thres: float, lr, get_optimizer, log_id: str, loss=YoloLoss(), num_gpu: int=1, accum_batch_num: int=1, mix_precision: bool=True, grad_clip: bool=True, clip_max_norm: float=5.0, model_dir: str='./model', log_dir: str='./logs', load_model: Optional[str]=None, load_optim: Optional[str]=None, load_epoch: int=-1, visualize_cnt: int=10, test_pr_batch_ratio: float=1.0, test_pr_after_epoch: int=0, skip_nan_inf: bool=False, auto_restore: bool=True, cloud_notebook_service: bool=False):
 	"""trainer for yolo v2. 
 	Note: weight init is not done in this method, because the architecture
 	of yolo v2 is rather complicated with the design of pass through layer
@@ -24,6 +24,7 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 		train_iter (DataLoader): training dataset iterator
 		test_iter (DataLoader): testing dataset iterator
 		num_epochs (int): number of epochs to train
+		freeze_epoch (int): epoch to freeze the backbone
 		multi_scale_epoch (int): number of epochs to train with multi scale
 		output_scale_S (int): final network scale (S), input size will be 32S * 32S, as the network stride is 32
 		lambda_scale (list[float]): lambda list for each scale
@@ -206,6 +207,12 @@ def train(get_net, train_iter: DataLoader, test_iter: DataLoader, num_epochs: in
 
 
 	def main_loop(epoch):
+		for param in net.backbone.parameters():
+			if epoch < freeze_epoch:
+				param.requires_grad = False
+			else:
+				param.requires_grad = True
+
 		# define metrics: coord_loss, class_loss, no_obj_loss, obj_loss, prior_loss, train loss, sample count
 		metrics = [Accumulator(7) for _ in range(num_scales + 1)]
 		# define timer
