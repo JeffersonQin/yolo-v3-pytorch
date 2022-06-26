@@ -1095,7 +1095,7 @@
 * 改进
   * 调参
 * 效果
-  * max AP@.5 59.31 @ epoch 186, + 7.06% [baseline], + 3.83% [renaissance]
+  * max AP@.5 59.31% @ epoch 186, + 7.06% [baseline], + 3.83% [renaissance]
   * max VOCmAP 58.77% @ epoch 186, + 6.61% [baseline], + 3.76% [renaissance]
 * 结论
   * 没用，下一个
