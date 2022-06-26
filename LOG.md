@@ -1164,3 +1164,78 @@
   | :---: | :--------: | :---: | :----------: |
   |   0   |     -1     |  31   | normal start |
   |  185  |    184     |  29   |  CUDA ERROR  |
+
+## resnet18-voc-bubbliiiing-sgd
+
+* 实验目的及方法
+  * 使用 bubbliiiing 的参数进行实验
+* 改进
+  * 调参
+* 效果
+  * EARLY STOP @ epoch 112
+  * max AP@.5 2.852% @ epoch 112
+  * max VOCmAP 4.146% @ epoch 106
+* 结论
+  * 没用，下一个
+* 调参建议
+  * freeze backbone
+* <details>
+  <summary>参数</summary>
+  <pre>
+  # define hyper parameters
+  # batch & gradient accumulation
+  batch_size_train = 32
+  batch_size_test = 64
+  accum_batch_num = 2
+  # epoch
+  num_epoch = 200
+  freeze_epoch = 0
+  multi_scale_epoch = 190
+  output_scale_S = 13
+  # optimizer
+  weight_decay = 0.0005
+  momentum = 0.937
+  # mix precision
+  mix_precision = True
+  # gradient clipping
+  clip_max_norm = 20.0
+  # lambda scale
+  lambda_scale_1 = 0.4
+  lambda_scale_2 = 1.0
+  lambda_scale_4 = 4.0
+  # loss
+  lambda_coord = 0.05
+  lambda_noobj = 1.0
+  lambda_obj = 5.0
+  lambda_class = 1 * 20 / 80
+  lambda_prior = 0.001
+  epoch_prior = 60
+  IoU_thres = 0.5
+  scale_coord = True
+  eps = 1e-6
+  no_obj_v3 = True
+  # learning rate scheduler
+  lr_linear_max = 0.01
+  lr_warmup_epoch = 30
+  lr_cosine_max_1 = 0.01
+  lr_T_half_1 = 170
+  # lr_cosine_max_2 = 0.5
+  # lr_T_half_2 = 50
+  # lr_cosine_max_3 = 0.25
+  # lr_T_half_3 = 60
+  # data augmentation
+  random_ratio = 0.5
+  # conf thres
+  conf_thres = 0.01
+  conf_ratio_thres = 0.05
+  # test strategy
+  test_pr_after_epoch = 10
+  test_pr_batch_ratio = 1.0
+  </pre>
+  </details>
+* 显著参数变化：略
+* 流程
+  | epoch | load_epoch | seed  |    reason    |
+  | :---: | :--------: | :---: | :----------: |
+  |   0   |     -1     |  31   | normal start |
+  |  39   |     38     |  28   |  CUDA ERROR  |
