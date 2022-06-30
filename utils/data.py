@@ -302,6 +302,18 @@ class YOLODataset(data.Dataset):
 class VOCDataset(YOLODataset):
 	"""VOC Dataset"""
 
+	def __init__(self, dataset: data.Dataset, train: float=0.5, difficult: bool=True):
+		"""VOC Dataset Initialization
+
+		Args:
+			dataset (data.Dataset): dataset
+			train (float, optional): random ratio for data augmentation. Defaults to 0.5.
+			difficult (bool): whether include difficult items. Defaults to True.
+		"""
+		super(VOCDataset, self).__init__(dataset, train)
+		self.difficult = difficult
+
+
 	def transform(self, img: torch.Tensor, target: dict) -> Tuple[torch.Tensor, torch.Tensor]:
 		"""transform VOC data to YOLO data format
 
@@ -318,6 +330,7 @@ class VOCDataset(YOLODataset):
 
 		bbox = torch.zeros((count, 5))
 		for i in range(count):
+			if obj['difficult'] == '1' and not self.difficult: continue
 			obj = target['annotation']['object'][i]
 			bbox[i][0] = float(obj['bndbox']['xmin'])
 			bbox[i][1] = float(obj['bndbox']['ymin'])
@@ -354,7 +367,7 @@ class COCODataset(YOLODataset):
 		return img, bbox
 
 
-def load_data_voc(batch_size_train: int, batch_size_test: int, num_workers=0, persistent_workers=False, download=False, train_shuffle=True, test_shuffule=False, pin_memory=True, data_augmentation=0.5) -> list[data.DataLoader]:
+def load_data_voc(batch_size_train: int, batch_size_test: int, num_workers=0, persistent_workers=False, download=False, train_shuffle=True, test_shuffule=False, pin_memory=True, data_augmentation=0.5, train_difficult=True) -> list[data.DataLoader]:
 	"""Load Pascal VOC dataset, consist of VOC2007trainval+test+VOC2012train, VOC2012val
 
 	Args:
@@ -367,6 +380,7 @@ def load_data_voc(batch_size_train: int, batch_size_test: int, num_workers=0, pe
 		test_shuffule (bool, optional): whether to shuffle test data. Defaults to False.
 		pin_memory (bool, optional): whether to pin memory. Defaults to True.
 		data_augmentation (float, optional): random ratio for data augmentation. Defaults to 0.5.
+		train_difficult (bool, optional): whether to include difficult objects during training. Defaults to True.
 
 	Returns:
 		list[data.DataLoader]: train_iter, test_iter
@@ -381,11 +395,11 @@ def load_data_voc(batch_size_train: int, batch_size_test: int, num_workers=0, pe
 
 	return (
 		data.DataLoader(
-			VOCDataset(data.ConcatDataset([voc2007_trainval, voc2007_test, voc2012_train]), train=data_augmentation), 
+			VOCDataset(data.ConcatDataset([voc2007_trainval, voc2007_test, voc2012_train]), train=data_augmentation, difficult=train_difficult), 
 			batch_size=batch_size_train, shuffle=train_shuffle, num_workers=num_workers, 
 			persistent_workers=persistent_workers, pin_memory=pin_memory),
 		data.DataLoader(
-			VOCDataset(voc2012_val, train=0),
+			VOCDataset(voc2012_val, train=0, difficult=True),
 			batch_size=batch_size_test, shuffle=test_shuffule, num_workers=num_workers, 
 			persistent_workers=persistent_workers, pin_memory=pin_memory)
 	)
