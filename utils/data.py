@@ -330,8 +330,8 @@ class VOCDataset(YOLODataset):
 
 		bbox = torch.zeros((count, 5))
 		for i in range(count):
-			if obj['difficult'] == '1' and not self.difficult: continue
 			obj = target['annotation']['object'][i]
+			if obj['difficult'] == '1' and not self.difficult: continue
 			bbox[i][0] = float(obj['bndbox']['xmin'])
 			bbox[i][1] = float(obj['bndbox']['ymin'])
 			bbox[i][2] = float(obj['bndbox']['xmax'])
