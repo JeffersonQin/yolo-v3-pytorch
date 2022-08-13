@@ -46,7 +46,16 @@ class YoloAnchorLayer(nn.Module):
 		XC[..., 4:(5 + num_classes)] = X[..., 4:(5 + num_classes)].sigmoid()
 		XC[..., 2] = (X[..., 2] * self.anchors_ln[scale_idx][:, 0]).exp()
 		XC[..., 3] = (X[..., 3] * self.anchors_ln[scale_idx][:, 1]).exp()
-		
+
+		# print(f'X[..., 0:2] is nan/inf: {torch.isnan(X[..., 0:2]).sum() > 0}, {torch.isinf(X[..., 0:2]).sum() > 0}')
+		# print(f'X[..., 4:(5 + num_classes)] is nan/inf: {torch.isnan(X[..., 4:(5 + num_classes)]).sum() > 0}, {torch.isinf(X[..., 4:(5 + num_classes)]).sum() > 0}')
+		# print(f'X[..., 2] is nan/inf: {torch.isnan(X[..., 2]).sum() > 0}, {torch.isinf(X[..., 2]).sum() > 0}')
+		# print(f'X[..., 3] is nan/inf: {torch.isnan(X[..., 3]).sum() > 0}, {torch.isinf(X[..., 3]).sum() > 0}')
+		# print(f'XC[..., 0:2] is nan/inf: {torch.isnan(XC[..., 0:2]).sum() > 0}, {torch.isinf(XC[..., 0:2]).sum() > 0}')
+		# print(f'XC[..., 4:(5 + num_classes)] is nan/inf: {torch.isnan(XC[..., 4:(5 + num_classes)]).sum() > 0}, {torch.isinf(XC[..., 4:(5 + num_classes)]).sum() > 0}')
+		# print(f'XC[..., 2] is nan/inf: {torch.isnan(XC[..., 2]).sum() > 0}, {torch.isinf(XC[..., 2]).sum() > 0}')
+		# print(f'XC[..., 3] is nan/inf: {torch.isnan(XC[..., 3]).sum() > 0}, {torch.isinf(XC[..., 3]).sum() > 0}')
+
 		# reshape back
 		XC = XC.reshape(shape)
 		return XC

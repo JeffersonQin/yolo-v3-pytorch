@@ -188,8 +188,18 @@ class YoloLoss(nn.Module):
 		xy_hat = yhat_res[:, :, :, :, 0:2]
 		xy_y = y[:, :, :, :, 0:2]
 		# calculate loss
+		# print(f'y[:, :, :, :, 2:4] is nan/inf: {torch.isnan(y[:, :, :, :, 2:4]).sum() > 0}, {torch.isinf(y[:, :, :, :, 2:4]).sum() > 0}')
+		# print(f'y[:, :, :, :, 2:4] / anchors[scale_idx] is nan/inf: {torch.isnan(y[:, :, :, :, 2:4] / anchors[scale_idx]).sum() > 0}, {torch.isinf(y[:, :, :, :, 2:4] / anchors[scale_idx]).sum() > 0}')
+		# print(f'y[:, :, :, :, 2:4] / anchors[scale_idx] < 0: {((y[:, :, :, :, 2:4] / anchors[scale_idx]) < 0).sum() > 0}')
+		# print(f'xyhat is nan/inf: {torch.isnan(xy_hat).sum() > 0}, {torch.isinf(xy_hat).sum() > 0}')
+		# print(f'xy_y is nan/inf: {torch.isnan(xy_y).sum() > 0}, {torch.isinf(xy_y).sum() > 0}')
+		# print(f'wh_hat_res is nan/inf: {torch.isnan(wh_hat_res).sum() > 0}, {torch.isinf(wh_hat_res).sum() > 0}')
+		# print(f'wh_hat is nan/inf: {torch.isnan(wh_hat).sum() > 0}, {torch.isinf(wh_hat).sum() > 0}')
+		# print(f'wh_hat is pos inf: {torch.isposinf(wh_hat).sum() > 0}')
+		# print(f'wh_hat is neg inf: {torch.isneginf(wh_hat).sum() > 0}')
+		# print(f'wh_true is nan/inf: {torch.isnan(wh_true).sum() > 0}, {torch.isinf(wh_true).sum() > 0}')
 		coord_loss = (self.mseloss(xy_hat, xy_y) + self.mseloss(wh_hat_res, wh_true)).sum(dim=4) \
-			* have_obj * self.lambda_coord
+			* have_obj * self.lambda_coord * S * S / 13 / 13
 		if self.scale_coord:
 			coord_loss = coord_loss * (2 - y[:, :, :, :, 2] * y[:, :, :, :, 3])
 		coord_loss = coord_loss.sum(dim=(1, 2, 3))

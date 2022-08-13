@@ -265,8 +265,8 @@ class YOLODataset(data.Dataset):
 
 		# Image Augmentation
 		# randomly scaling and translation up to 20%
-		if random.random() < self.train:
-			img, bbox = transform_crop(img, bbox, 0.2)
+		# if random.random() < self.train:
+		# 	img, bbox = transform_crop(img, bbox, 0.2)
 
 		# color jitter
 		# randomly adjust brightness, contrast, saturation, hue
